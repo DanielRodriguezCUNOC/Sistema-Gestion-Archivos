@@ -14,6 +14,7 @@ export class RolesGuard implements CanActivate {
       context.getClass(),
     ])
 
+    //* Si no se requieren roles, permitir el acceso
     if (!requiredRoles) {
       return true;
     }
