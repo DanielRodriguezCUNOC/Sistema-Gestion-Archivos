@@ -31,11 +31,14 @@ export class FilesService implements OnModuleInit {
       readableStream.push(file.buffer);
       readableStream.push(null);
 
+      const targetFolderObjectId = folderId && Types.ObjectId.isValid(folderId)
+        ? new Types.ObjectId(folderId) : null;
+
       const uploadStream = this.gridFSBucket.openUploadStream(file.originalname, {
         metadata: {
           contentType: file.mimetype,
           owner: new Types.ObjectId(ownerId),
-          folderId: folderId ? new Types.ObjectId(folderId) : null,
+          folderId: targetFolderObjectId,
           size: file.size,
         },
       });
@@ -45,22 +48,31 @@ export class FilesService implements OnModuleInit {
         .on('error', (error) => reject(error))
         .on('finish', () => {
           resolve({
-            fileId: uploadStream.id,
+            id: uploadStream.id,
             filename: file.originalname,
-            size: file.size,
-            mimetype: file.mimetype,
+            length: file.size,
+            contentType: file.mimetype,
             folderId: folderId || null,
+            uploadDate: new Date(),
           });
         });
     });
   }
 
-  async getFileStream(fileId: string) {
+  async getFileStream(fileId: string, ownerId: string) {
+
+    if (!Types.ObjectId.isValid(fileId)) {
+      throw new NotFoundException('Archivo no encontrado en la base de datos');
+    }
+
     const _id = new Types.ObjectId(fileId);
-    const files = await this.gridFSBucket.find({ _id }).toArray();
+    const files = await this.gridFSBucket.find({
+      _id,
+      'metadata.owner': new Types.ObjectId(ownerId),
+    }).toArray();
 
     if (!files || files.length === 0) {
-      throw new NotFoundException('Archivo no encontrado en la base de datos');
+      throw new NotFoundException('Archivo no encontrado o no tienes permiso para acceder a él');
     }
 
     const fileInfo = files[0];
@@ -69,18 +81,46 @@ export class FilesService implements OnModuleInit {
     return { fileInfo, downloadStream };
   }
 
-  async listFilesByFolder(ownerId: string, folderId?: string) {
-    const targetFolderId = folderId ? new Types.ObjectId(folderId) : null;
-    return this.gridFSBucket
-      .find({
-        'metadata.owner': new Types.ObjectId(ownerId),
-        'metadata.folderId': targetFolderId,
-      })
-      .toArray();
-  }
-
   async deleteFile(fileId: string): Promise<void> {
     const _id = new Types.ObjectId(fileId);
     await this.gridFSBucket.delete(_id);
+  }
+
+  async listFilesByFolder(
+    ownerId: string,
+    folderId?: string,
+    search?: string,
+    sortBy: string = 'name',
+    order: 'asc' | 'desc' = 'asc',
+  ) {
+    const query: Record<string, any> = {
+      'metadata.owner': new Types.ObjectId(ownerId),
+    }
+
+    //* Si hay término de búsqueda, se agrega a la consulta
+    if (search && search.trim() !== '') {
+      query.filename = { $regex: search.trim(), $options: 'i' }
+    } else {
+      //* si no hay busqueda, trae la carpeta solicitada
+      query['metadata.folderId'] = folderId ? new Types.ObjectId(folderId) : null
+    }
+
+    //* Criterios de ordenamiento
+    let sortField = 'filename'
+    if (sortBy === 'date') sortField = 'uploadDate'
+    if (sortBy === 'size') sortField = 'length'
+
+    const sortOrder = order === 'desc' ? -1 : 1
+
+    const files = await this.gridFSBucket.find(query).sort({ [sortField]: sortOrder }).toArray()
+
+    return files.map((file) => ({
+      id: file._id,
+      filename: file.filename,
+      length: file.length,
+      uploadDate: file.uploadDate,
+      contentType: file.metadata?.contentType,
+      folderId: file.metadata?.folderId || null,
+    }))
   }
 }
