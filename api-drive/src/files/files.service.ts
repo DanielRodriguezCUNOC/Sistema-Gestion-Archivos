@@ -59,31 +59,30 @@ export class FilesService implements OnModuleInit {
     });
   }
 
-  async getFileStream(fileId: string, ownerId: string) {
+  async deleteFile(fileId: string, ownerId: string): Promise<{ message: string }> {
 
     if (!Types.ObjectId.isValid(fileId)) {
       throw new NotFoundException('Archivo no encontrado en la base de datos');
     }
 
     const _id = new Types.ObjectId(fileId);
-    const files = await this.gridFSBucket.find({
-      _id,
-      'metadata.owner': new Types.ObjectId(ownerId),
-    }).toArray();
+    const ownerObjectId = new Types.ObjectId(ownerId);
+
+    //* Verificar si el archivo existe y le pertenece al usuario
+    const files = await this.gridFSBucket.find({ _id, 'metadata.owner': ownerObjectId }).toArray()
 
     if (!files || files.length === 0) {
       throw new NotFoundException('Archivo no encontrado o no tienes permiso para acceder a él');
     }
 
-    const fileInfo = files[0];
-    const downloadStream = this.gridFSBucket.openDownloadStream(_id);
-
-    return { fileInfo, downloadStream };
-  }
-
-  async deleteFile(fileId: string): Promise<void> {
-    const _id = new Types.ObjectId(fileId);
+    /* 
+      * Eliminar el archivo de GridFS 
+      * Se boora de uploads.files y uploads.chunks
+      * uploads.chunks contiene los datos binarios del archivo, mientras que uploads.files contiene la metadata del archivo.
+    */
     await this.gridFSBucket.delete(_id);
+
+    return { message: 'Archivo eliminado correctamente de la base de datos' };
   }
 
   async listFilesByFolder(
@@ -122,5 +121,133 @@ export class FilesService implements OnModuleInit {
       contentType: file.metadata?.contentType,
       folderId: file.metadata?.folderId || null,
     }))
+  }
+
+  //* Obtener metadata y contenido de un archivo para descarga o visualización
+  async getFileStream(fileId: string, ownerId: string) {
+    if (!Types.ObjectId.isValid(fileId)) {
+      throw new NotFoundException('Archivo no encontrado en la base de datos');
+    }
+
+    const _id = new Types.ObjectId(fileId);
+    const files = await this.gridFSBucket.find({
+      _id, 'metadata.owner': new Types.ObjectId(ownerId),
+    }).toArray();
+
+    if (!files || files.length === 0) {
+      throw new NotFoundException('Archivo no encontrado o no tienes permiso para acceder a él');
+    }
+
+    const fileInfo = files[0];
+    const downloadStream = this.gridFSBucket.openDownloadStream(_id);
+
+    return { fileInfo, downloadStream };
+  }
+
+  //* Renombrar archivo
+  async renameFile(fileId: string, ownerId: string, newName: string) {
+    if (!Types.ObjectId.isValid(fileId)) {
+      throw new NotFoundException('Archivo no encontrado en la base de datos');
+    }
+
+    const _id = new Types.ObjectId(fileId)
+
+    //* verificar si el archivo existe y le pertenece al usuario
+    const files = await this.gridFSBucket.find({
+      _id, 'metadata.owner': new Types.ObjectId(ownerId),
+    }).toArray()
+
+    if (!files || files.length === 0) {
+      throw new NotFoundException('Archivo no encontrado o no tienes permiso para acceder a él');
+    }
+
+    const trimmedName = newName.trim()
+
+    //* Funcion nativa de GridFS para renombrar el archivo
+    await this.gridFSBucket.rename(_id, trimmedName)
+
+    return {
+      id: fileId,
+      filename: trimmedName,
+      message: 'Archivo renombrado correctamente',
+    }
+  }
+
+  async moveFile(
+    fileId: string,
+    ownerId: string,
+    targetFolderId?: string | null
+  ) {
+    if (!Types.ObjectId.isValid(fileId)) {
+      throw new NotFoundException('Archivo no encontrado en la base de datos');
+    }
+    const fileObjectId = new Types.ObjectId(fileId);
+    const ownerObjectId = new Types.ObjectId(ownerId);
+
+    //* verificar que el archivo existe y le pertenece al usuario
+    const file = await this.connection.db?.collection('uploads.files')
+      .findOne({ _id: fileObjectId, 'metadata.owner': ownerObjectId });
+
+    if (!file) {
+      throw new NotFoundException('Archivo no encontrado o no tienes permiso para acceder a él');
+    }
+
+    //* Carpeta destino
+    let destinationFolderObjectId: Types.ObjectId | null = null;
+    if (targetFolderId && Types.ObjectId.isValid(targetFolderId)) {
+      destinationFolderObjectId = new Types.ObjectId(targetFolderId);
+    }
+
+    //* Actualizar el metadata del archivo con la nueva carpeta destino
+    await this.connection.db?.collection('uploads.files').updateOne(
+      { _id: fileObjectId },
+      { $set: { 'metadata.folderId': destinationFolderObjectId } }
+    );
+
+    return {
+      id: fileId,
+      targetFolderId: destinationFolderObjectId ? destinationFolderObjectId.toString() : null,
+      message: 'Archivo movido correctamente',
+    };
+  }
+
+  //* Eliminar carpeta y todos sus archivos
+  async deleteFolderAndFiles(folderId: string, ownerId: string) {
+    if (!Types.ObjectId.isValid(folderId)) {
+      throw new NotFoundException('Carpeta no encontrada en la base de datos');
+    }
+
+    const folderObjectId = new Types.ObjectId(folderId);
+    const ownerObjectId = new Types.ObjectId(ownerId);
+
+    //* Verificar si la carpeta existe y le pertenece al usuario
+    const folderExists = await this.connection.db?.collection('uploads.files')
+      .findOne({ _id: folderObjectId, 'metadata.owner': ownerObjectId });
+
+    if (!folderExists) {
+      throw new NotFoundException('Carpeta no encontrada o no tienes permiso para acceder a ella');
+    }
+
+    //* Eliminar todos los archivos dentro de la carpeta
+    await this.connection.db?.collection('uploads.files').deleteMany({
+      'metadata.folderId': folderObjectId,
+      'metadata.owner': ownerObjectId,
+    });
+  }
+
+  async deleteFilesByFolderIds(folderIds: Types.ObjectId[], ownerId: string): Promise<number> {
+    const ownerObjectId = new Types.ObjectId(ownerId);
+
+    //* Buscar todos los archivos que esten dentro de la carpeta padre y esté dentro de la lista de IDs recolectados
+    const files = await this.gridFSBucket.find({
+      'metadata.owner': ownerObjectId,
+      'metadata.folderId': { $in: folderIds },
+    }).toArray()
+
+    //* Eliminar todos los archivos encontrados de GridFS
+    for (const file of files) {
+      await this.gridFSBucket.delete(file._id);
+    }
+    return files.length;
   }
 }

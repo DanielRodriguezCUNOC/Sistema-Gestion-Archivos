@@ -1,7 +1,7 @@
 import { Controller, Post, Get, Delete, Body, Query, Param, Req } from '@nestjs/common';
 import { FoldersService } from './folders.service.js';
 import { CreateFolderDto } from './dto/create-folder.dto.js';
-import * as RequestWithUser from '../auth/utils/RequestWithUser.js';
+import type { RequestWithUser } from '../auth/utils/RequestWithUser.js';
 
 @Controller('folders')
 export class FoldersController {
@@ -10,20 +10,24 @@ export class FoldersController {
   @Post()
   async createFolder(
     @Body('name') createFolderDto: CreateFolderDto,
-    @Req() req: RequestWithUser.RequestWithUser,
+    @Req() req: RequestWithUser,
   ) {
     const ownerId = req.user.sub || req.user.id
     return this.foldersService.createFolder(createFolderDto, ownerId);
   }
 
   @Delete(':id')
-  async deleteFolder(@Param('id') id: string) {
-    return this.foldersService.deleteFolder(id);
+  async deleteFolder(
+    @Param('id') id: string,
+    @Req() req: RequestWithUser,
+  ) {
+    const ownerId = req.user.sub || req.user.id
+    return this.foldersService.deleteFolder(id, ownerId);
   }
 
   @Get('content')
   async getFolderContent(
-    @Req() req: RequestWithUser.RequestWithUser,
+    @Req() req: RequestWithUser,
     @Query('folderId') folderId?: string,
     @Query('search') search?: string,
     @Query('sortBy') sortBy: string = 'name',
