@@ -1,10 +1,11 @@
-import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectConnection } from '@nestjs/mongoose';
 import type { Connection } from 'mongoose';
 import { Types } from 'mongoose';
 import { GridFSBucket } from 'mongodb';
 import { Readable } from 'stream';
 import 'multer';
+import { PermissionLevel } from './utils/permission-level.enum.js';
 
 @Injectable()
 export class FilesService implements OnModuleInit {
@@ -65,24 +66,31 @@ export class FilesService implements OnModuleInit {
       throw new NotFoundException('Archivo no encontrado en la base de datos');
     }
 
-    const _id = new Types.ObjectId(fileId);
+    const fileObjectId = new Types.ObjectId(fileId);
     const ownerObjectId = new Types.ObjectId(ownerId);
 
     //* Verificar si el archivo existe y le pertenece al usuario
-    const files = await this.gridFSBucket.find({ _id, 'metadata.owner': ownerObjectId }).toArray()
+    const file = await this.connection.db?.collection('UploadedFiles.files').findOne({
+      _id: fileObjectId,
+      'metadata.owner': ownerObjectId
+    })
 
-    if (!files || files.length === 0) {
-      throw new NotFoundException('Archivo no encontrado o no tienes permiso para acceder a él');
+    if (!file) {
+      throw new NotFoundException('Archivo no encontrado');
     }
 
     /* 
-      * Eliminar el archivo de GridFS 
-      * Se boora de uploads.files y uploads.chunks
-      * uploads.chunks contiene los datos binarios del archivo, mientras que uploads.files contiene la metadata del archivo.
+      * Actualizar metadatos
     */
-    await this.gridFSBucket.delete(_id);
+    await this.connection.db?.collection('uploads.files').updateOne({
+      _id: fileObjectId
+    }, {
+      $set: {
+        'metadata.isTrash': true, 'metadata.deletedAt': new Date()
+      }
+    });
 
-    return { message: 'Archivo eliminado correctamente de la base de datos' };
+    return { message: 'Archivo enviado a la papelera' };
   }
 
   async listFilesByFolder(
@@ -93,7 +101,12 @@ export class FilesService implements OnModuleInit {
     order: 'asc' | 'desc' = 'asc',
   ) {
     const query: Record<string, any> = {
-      'metadata.owner': new Types.ObjectId(ownerId),
+
+      'metadata.isTrash': { $ne: true }, //* Excluir archivos en papelera
+      $or: [
+        { 'metadata.owner': new Types.ObjectId(ownerId), },
+        { 'metadata.sharedWith.userId': new Types.ObjectId(ownerId) }
+      ],
     }
 
     //* Si hay término de búsqueda, se agrega a la consulta
@@ -124,14 +137,20 @@ export class FilesService implements OnModuleInit {
   }
 
   //* Obtener metadata y contenido de un archivo para descarga o visualización
-  async getFileStream(fileId: string, ownerId: string) {
+  async getFileStream(fileId: string, requesterId: string) {
     if (!Types.ObjectId.isValid(fileId)) {
       throw new NotFoundException('Archivo no encontrado en la base de datos');
     }
 
     const _id = new Types.ObjectId(fileId);
+    const requesterObjectId = new Types.ObjectId(requesterId);
     const files = await this.gridFSBucket.find({
-      _id, 'metadata.owner': new Types.ObjectId(ownerId),
+      _id,
+      'metadata.isTrash': { $ne: true },
+      $or: [
+        { 'metadata.owner': requesterObjectId },
+        { 'metadata.sharedWith.userId': requesterObjectId }
+      ]
     }).toArray();
 
     if (!files || files.length === 0) {
@@ -236,18 +255,301 @@ export class FilesService implements OnModuleInit {
   }
 
   async deleteFilesByFolderIds(folderIds: Types.ObjectId[], ownerId: string): Promise<number> {
-    const ownerObjectId = new Types.ObjectId(ownerId);
 
-    //* Buscar todos los archivos que esten dentro de la carpeta padre y esté dentro de la lista de IDs recolectados
-    const files = await this.gridFSBucket.find({
-      'metadata.owner': ownerObjectId,
+    const files = await this.connection.db?.collection('uploads.files').updateMany({
+      'metadata.owner': new Types.ObjectId(ownerId),
       'metadata.folderId': { $in: folderIds },
+      'metadata.isTrash': { $ne: true }, //* Excluir archivos en papelera
+    },
+      { $set: { 'metadata.isTrash': true, 'metadata.deleteAt': new Date() } }
+    )
+
+    return files?.modifiedCount || 0;
+  }
+
+  //* Buscar archivo por nombre
+  async searchFilesByName(ownerId: string, name: string) {
+
+    if (!name || name.trim() === '') return []
+
+    const files = await this.gridFSBucket.find({
+      'metadata.owner': new Types.ObjectId(ownerId),
+      'metadata.isTrash': { $ne: true }, //* Excluir archivos en papelera
+      filename: { $regex: name.trim(), $options: 'i' }
     }).toArray()
 
-    //* Eliminar todos los archivos encontrados de GridFS
+    return files.map((file) => ({
+      id: file._id,
+      filename: file.filename,
+      length: file.length,
+      uploadDate: file.uploadDate,
+      contentType: file.metadata?.contentType,
+      folderId: file.metadata?.folderId || null,
+    }))
+  }
+
+  //* Listar archivos en papelera
+  async getTrashedFiles(ownerId: string) {
+
+    const files = await this.gridFSBucket.find({
+      'metadata.owner': new Types.ObjectId(ownerId),
+      'metadata.isTrash': true, //* Solo archivos en papelera
+    }).toArray()
+
+    return files.map((file) => ({
+      id: file._id,
+      filename: file.filename,
+      length: file.length,
+      deletedAt: file.metadata?.deletedAt || null,
+      contentType: file.metadata?.contentType,
+    }))
+  }
+
+  //* Restaurar archivo desde papelera
+  async restoreFile(fileId: string, ownerId: string) {
+    if (!Types.ObjectId.isValid(fileId)) {
+      throw new NotFoundException('Archivo no encontrado en la base de datos');
+    }
+    const fileObjectId = new Types.ObjectId(fileId);
+
+    //* Verificar si el archivo existe y le pertenece al usuario
+    const file = await this.connection.db?.collection('uploads.files').findOne({
+      _id: fileObjectId,
+      'metadata.owner': new Types.ObjectId(ownerId),
+      'metadata.isTrash': true, //* Solo archivos en papelera
+    });
+
+    if (!file) {
+      throw new NotFoundException('Archivo no encontrado o no tienes permiso para acceder a él');
+    }
+
+    //* Restaurar el archivo desde la papelera
+    await this.connection.db?.collection('uploads.files').updateOne(
+      { _id: fileObjectId },
+      { $set: { 'metadata.isTrash': false, 'metadata.deletedAt': null } }
+    );
+
+    return { message: 'Archivo restaurado correctamente' };
+  }
+
+  //* Eliminar archivo permanentemente
+  async hardDeleteFile(fileId: string, ownerId: string) {
+
+    if (!Types.ObjectId.isValid(fileId)) {
+      throw new NotFoundException('Archivo no encontrado en la base de datos');
+    }
+
+    const fileObjectId = new Types.ObjectId(fileId);
+
+    //* Verificar si el archivo existe y le pertenece al usuario
+    const file = await this.gridFSBucket.find({
+      _id: fileObjectId,
+      'metadata.owner': new Types.ObjectId(ownerId),
+      'metadata.isTrash': true, //* Solo archivos en papelera
+    }).toArray();
+
+    if (!file || file.length === 0) {
+      throw new NotFoundException('Archivo no encontrado o no tienes permiso para acceder a él');
+    }
+
+    //* Borrar chunks y metadata del archivo
+    await this.gridFSBucket.delete(fileObjectId);
+
+    return { message: 'Archivo eliminado permanentemente' };
+  }
+
+  //* Eliminar archivos por carpeta
+  async hardDeleteFilesByFolderIds(folderIds: Types.ObjectId[], ownerId: string): Promise<void> {
+    const files = await this.gridFSBucket.find({
+      'metadata.owner': new Types.ObjectId(ownerId),
+      'metadata.folderId': { $in: folderIds },
+    }).toArray();
+
     for (const file of files) {
       await this.gridFSBucket.delete(file._id);
     }
-    return files.length;
   }
+
+  //* Restaurar archivos por carpeta
+  async restoreFilesByFolderIds(folderIds: Types.ObjectId[], ownerId: string): Promise<void> {
+    await this.connection.db?.collection('uploads.files').updateMany({
+      'metadata.owner': new Types.ObjectId(ownerId),
+      'metadata.folderId': { $in: folderIds },
+      'metadata.isTrash': true, //* Solo archivos en papelera
+    },
+      { $set: { 'metadata.isTrash': false, 'metadata.deletedAt': null } }
+    );
+  }
+
+  //* Compartir archivo
+  async shareFile(fileId: string, ownerId: string, targetUserId: string, permission: PermissionLevel) {
+
+    if (!Types.ObjectId.isValid(fileId)) {
+      throw new NotFoundException('Archivo no encontrado en la base de datos');
+    }
+
+    const fileObjectId = new Types.ObjectId(fileId);
+    const ownerObjectId = new Types.ObjectId(ownerId);
+    const targetUserObjectId = new Types.ObjectId(targetUserId);
+
+    if (ownerId === targetUserId) {
+      throw new BadRequestException('No puedes compartir un archivo contigo mismo');
+    }
+
+    //* Verificar si el archivo existe y le pertenece al usuario
+    const file = await this.connection.db?.collection('uploads.files').findOne({
+      _id: fileObjectId,
+      'metadata.owner': ownerObjectId,
+      'metadata.isTrash': { $ne: true }, //* Excluir archivos en papelera
+    })
+
+    if (!file) {
+      throw new NotFoundException('Archivo no encontrado o no tienes permiso para acceder a él');
+    }
+
+    //* Actualizar el arreglo de compartidos 
+    await this.connection.db?.collection('uploads.files').updateOne(
+      { _id: fileObjectId },
+      { $push: { 'metadata.sharedWith': { userId: targetUserObjectId } } as any }
+    )
+
+    await this.connection.db?.collection('uploads.files').updateOne(
+      { _id: fileObjectId },
+      { $push: { 'metadata.sharedWith': { userId: targetUserObjectId, permission } } as any }
+    )
+
+    return { message: 'Permiso actualizados correctamente' }
+
+  }
+
+  //* Revocar permisos
+  async revokeShareFile(fileId: string, ownerId: string, targetUserId: string) {
+    const fileObjectId = new Types.ObjectId(fileId);
+    const targetUserObjectId = new Types.ObjectId(targetUserId);
+
+    const result = await this.connection.db?.collection('uploads.files').updateOne(
+      { _id: fileObjectId, 'metadata.owner': new Types.ObjectId(ownerId) },
+      { $pull: { 'metadata.sharedWith': { userId: targetUserObjectId } } as any }
+    );
+
+    if (result?.modifiedCount === 0) {
+      throw new NotFoundException('Archivo no encontrado o el usuario no tenía permisos');
+    }
+
+    return { message: 'Permiso revocado con éxito' };
+  }
+
+  async shareFilesByFolderIds(folderIds: Types.ObjectId[], ownerId: string, targetUserId: string, permission: string) {
+    const targetUserObjectId = new Types.ObjectId(targetUserId);
+
+    //* Remover permiso previo si existía
+    await this.connection.db?.collection('uploads.files').updateMany(
+      { 'metadata.owner': new Types.ObjectId(ownerId), 'metadata.folderId': { $in: folderIds } },
+      { $pull: { 'metadata.sharedWith': { userId: targetUserObjectId } } as any }
+    );
+
+    //* Insertar nuevo permiso
+    await this.connection.db?.collection('uploads.files').updateMany(
+      { 'metadata.owner': new Types.ObjectId(ownerId), 'metadata.folderId': { $in: folderIds } },
+      { $push: { 'metadata.sharedWith': { userId: targetUserObjectId, permission } } as any }
+    );
+  }
+
+  async revokeShareFilesByFolderIds(folderIds: Types.ObjectId[], ownerId: string, targetUserId: string) {
+    const targetUserObjectId = new Types.ObjectId(targetUserId);
+
+    await this.connection.db?.collection('uploads.files').updateMany(
+      { 'metadata.owner': new Types.ObjectId(ownerId), 'metadata.folderId': { $in: folderIds } },
+      { $pull: { 'metadata.sharedWith': { userId: targetUserObjectId } } as any }
+    );
+  }
+
+  async updateFileContent(
+    fileId: string,
+    userId: string,
+    content: string,
+    currentVersion: number,
+  ) {
+    if (!Types.ObjectId.isValid(fileId)) {
+      throw new NotFoundException('ID de archivo no válido');
+    }
+
+    const fileObjectId = new Types.ObjectId(fileId);
+    const userObjectId = new Types.ObjectId(userId);
+
+    //* Obtener metadatos del archivo y validar la existencia
+    const file = await this.connection.db?.collection('uploads.files').findOne({
+      _id: fileObjectId,
+      'metadata.isTrash': { $ne: true },
+    });
+
+    if (!file) {
+      throw new NotFoundException('Archivo no encontrado');
+    }
+
+    //* Verificar permisos (Debe ser el dueño O tener permiso 'edit' en sharedWith)
+    const isOwner = file.metadata.owner.toString() === userId;
+    const sharedEntry = file.metadata.sharedWith?.find(
+      (s: any) => s.userId.toString() === userId,
+    );
+    const hasEditPermission = sharedEntry && sharedEntry.permission === 'edit';
+
+    if (!isOwner && !hasEditPermission) {
+      throw new ForbiddenException('No tienes permisos de edición sobre este archivo');
+    }
+
+    //* Validar Control de Concurrencia Optimista
+    const dbVersion = file.metadata.version || 1;
+    if (currentVersion !== dbVersion) {
+      throw new ConflictException({
+        message: 'El archivo ha sido modificado por otro usuario mientras lo editabas.',
+        currentServerVersion: dbVersion,
+        fileId,
+      });
+    }
+
+    /*
+    * Reemplazar contenido binario en GridFS
+    * Eliminar los bloques antiguos de GridFS
+     */
+    await this.gridFSBucket.delete(fileObjectId);
+
+    //* Convertimos el string a un Readable Stream
+    const readableStream = new Readable();
+    readableStream.push(content);
+    readableStream.push(null);
+
+    const bufferSize = Buffer.byteLength(content, 'utf8');
+    const nextVersion = dbVersion + 1;
+
+    //* Abrir el stream de subida conservando el mismo ObjectId para no romper enlaces
+    const uploadStream = this.gridFSBucket.openUploadStreamWithId(
+      fileObjectId,
+      file.filename,
+      {
+        metadata: {
+          ...file.metadata,
+          size: bufferSize,
+          version: nextVersion,
+          updatedAt: new Date(),
+          lastModifiedBy: userObjectId,
+        },
+      },
+    );
+
+    return new Promise((resolve, reject) => {
+      readableStream
+        .pipe(uploadStream)
+        .on('error', (err) => reject(err))
+        .on('finish', () => {
+          resolve({
+            id: fileId,
+            filename: file.filename,
+            version: nextVersion,
+            message: 'Archivo actualizado con éxito',
+          });
+        });
+    });
+  }
+
 }

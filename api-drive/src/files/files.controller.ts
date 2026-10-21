@@ -12,6 +12,7 @@ import {
   Req,
   Query,
   Patch,
+  Put,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -20,6 +21,8 @@ import { FilesService } from './files.service.js';
 import type { RequestWithUser } from '../auth/utils/RequestWithUser.js';
 import { RenameFileDto } from './dto/rename-file.dto.js';
 import { MoveFileDto } from './dto/move-file.dto.js';
+import { ShareFileDto } from './dto/share-file.dto.js';
+import { UpdateFileContentDto } from './dto/update-file-content.dto.js';
 
 @Controller('files')
 export class FilesController {
@@ -30,6 +33,17 @@ export class FilesController {
     FileInterceptor('file', {
       storage: memoryStorage(),
       limits: { fileSize: 50 * 1024 * 1024 }, //* Límite de 50MB
+      fileFilter: (req, file, callback) => {
+        //* Restringimos a txt y .md
+        const allowedMimeTypes = ['text/plain', 'text/markdown', 'text/x-markdown']
+        const isAllowedExtension = file.originalname.match(/\.(txt|md)$/i)
+
+        if (!allowedMimeTypes.includes(file.mimetype) || !isAllowedExtension) {
+          callback(null, true)
+        } else {
+          callback(new BadRequestException('Solo se permiten archivos de texto (.txt, .md)'), false)
+        }
+      },
     }),
   )
   async uploadFile(
@@ -52,6 +66,24 @@ export class FilesController {
     const ownerId = req.user.sub || req.user.id
     return this.filesService.listFilesByFolder(ownerId, undefined, name);
 
+  }
+
+  @Get('trash')
+  async getTrashedFiles(@Req() req: RequestWithUser) {
+    const ownerId = req.user.sub || req.user.id;
+    return this.filesService.getTrashedFiles(ownerId);
+  }
+
+  @Patch('trash/:id/restore')
+  async restoreFile(@Param('id') id: string, @Req() req: RequestWithUser) {
+    const ownerId = req.user.sub || req.user.id;
+    return this.filesService.restoreFile(id, ownerId);
+  }
+
+  @Delete('trash/:id/hard')
+  async hardDeleteFile(@Param('id') id: string, @Req() req: RequestWithUser) {
+    const ownerId = req.user.sub || req.user.id;
+    return this.filesService.hardDeleteFile(id, ownerId);
   }
 
   @Get('view/:id')
@@ -119,6 +151,41 @@ export class FilesController {
   ) {
     const ownerId = req.user.sub || req.user.id
     return this.filesService.moveFile(id, ownerId, moveFileDto.targetFolderId);
+  }
+
+  @Post(':id/share')
+  async shareFile(
+    @Param('id') id: string,
+    @Body() shareFileDto: ShareFileDto,
+    @Req() req: RequestWithUser
+  ) {
+    const ownerId = req.user.sub || req.user.id;
+    return this.filesService.shareFile(id, ownerId, shareFileDto.targetUserId, shareFileDto.permission);
+  }
+
+  @Delete(':id/share/:userId')
+  async revokeShare(
+    @Param('id') fileId: string,
+    @Param('userId') targetUserId: string,
+    @Req() req: RequestWithUser
+  ) {
+    const ownerId = req.user.sub || req.user.id;
+    return this.filesService.revokeShareFile(fileId, ownerId, targetUserId);
+  }
+
+  @Put(':id/content')
+  async updateFileContent(
+    @Param('id') id: string,
+    @Req() req: RequestWithUser,
+    @Body() updateDto: UpdateFileContentDto,
+  ) {
+    const userId = req.user.sub || req.user.id;
+    return this.filesService.updateFileContent(
+      id,
+      userId,
+      updateDto.content,
+      updateDto.version,
+    );
   }
 
 }
