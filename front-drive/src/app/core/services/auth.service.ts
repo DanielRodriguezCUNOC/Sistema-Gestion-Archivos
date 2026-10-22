@@ -1,0 +1,56 @@
+import { Injectable, inject, signal, computed } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Router } from '@angular/router';
+import { Observable, tap } from 'rxjs';
+import { UserRole } from '../enums/user-role.enu';
+import { AuthResponse } from '../models/auth-response.interface';
+import { RegisterDto } from '../models/register.dto';
+import { User } from '../models/user.interface';
+import { LoginDto } from '../models/user.model';
+
+
+@Injectable({
+  providedIn: 'root'
+})
+export class AuthService {
+  private readonly http = inject(HttpClient);
+  private readonly router = inject(Router);
+  private readonly baseUrl = 'http://localhost:3000/api';
+
+  readonly currentUser = signal<User | null>(null);
+  readonly isAdmin = computed(() => this.currentUser()?.role === UserRole.ADMIN);
+  readonly isAuthenticated = computed(() => !!this.currentUser());
+
+
+  login(dto: LoginDto): Observable<AuthResponse> {
+    return this.http.post<AuthResponse>(`${this.baseUrl}/auth/login`, dto).pipe(
+      tap((response) => {
+        if (response.accessToken) {
+          localStorage.setItem('access_token', response.accessToken);
+          this.currentUser.set(response.user);
+        }
+      })
+    );
+  }
+
+  logout(): void {
+    localStorage.removeItem('access_token');
+    this.currentUser.set(null);
+    this.router.navigate(['/auth/login']);
+  }
+
+  registerPublic(dto: RegisterDto): Observable<AuthResponse> {
+    return this.http.post<AuthResponse>(`${this.baseUrl}/auth/register`, dto).pipe(
+      tap((response) => {
+        if (response.accessToken) {
+          localStorage.setItem('access_token', response.accessToken);
+          this.currentUser.set(response.user);
+        }
+      })
+    );
+  }
+
+  adminCreateUser(dto: RegisterDto): Observable<User> {
+    return this.http.post<User>(`${this.baseUrl}/users`, dto);
+  }
+}

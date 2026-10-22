@@ -1,23 +1,33 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
+import { UserRole } from '../../core/enums/user-role.enu';
+import { User } from '../../core/models/user.interface';
+import { RegisterDto } from '../../core/models/register.dto';
+import { Observable, tap } from 'rxjs';
+import { AuthResponse } from '../../core/models/auth-response.interface';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
-  private http = inject(HttpClient);
-  private router = inject(Router);
+  private readonly http = inject(HttpClient);
+  private readonly baseUrl = 'http://localhost:3000/api';
 
-  logout(): void {
+  readonly currentUser = signal<User | null>(null);
+  readonly isAdmin = computed(() => this.currentUser()?.role === UserRole.ADMIN);
 
-    this.http.post('/api/auth/logout', {}).subscribe({
-      next: () => this.clearSessionAndRedirect(),
-      error: () => this.clearSessionAndRedirect(),
-    });
+  registerPublic(dto: RegisterDto): Observable<AuthResponse> {
+    return this.http.post<AuthResponse>(`${this.baseUrl}/auth/register`, dto).pipe(
+      tap((response) => {
+        if (response.accessToken) {
+          localStorage.setItem('access_token', response.accessToken);
+          this.currentUser.set(response.user);
+        }
+      })
+    );
   }
 
-  private clearSessionAndRedirect(): void {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('user');
-    this.router.navigate(['/login']);
+  adminCreateUser(dto: RegisterDto): Observable<User> {
+    return this.http.post<User>(`${this.baseUrl}/users`, dto);
   }
+
 }
