@@ -61,8 +61,6 @@ export class ReportsService {
     return result || [];
   }
 
-  // Añadir en ReportsService:
-
   async getFilesByDateRange(startDate: string, endDate: string, userId?: string) {
     const start = new Date(startDate);
     const end = new Date(endDate);
@@ -284,8 +282,6 @@ export class ReportsService {
 
     return result || [];
   }
-
-  // Añadir en ReportsService:
 
   async getTopUsersBySharedResources(limit: number = 10) {
     //* Contar elementos compartidos en GridFS 
@@ -927,6 +923,81 @@ export class ReportsService {
       },
       totalOperations,
       summary: operations || [],
+    };
+  }
+
+  async getTopSystemActions(limit: number = 5, startDate?: string, endDate?: string) {
+    const matchStage: any = {};
+
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      end.setUTCHours(23, 59, 59, 999);
+
+      matchStage.createdAt = {
+        $gte: start,
+        $lte: end,
+      };
+    }
+
+    const pipeline = [
+      //* Se tiene la opcion de filtrar por rango de fechas
+      ...(Object.keys(matchStage).length > 0 ? [{ $match: matchStage }] : []),
+
+      //* Ejecutar múltiples consultas en paralelo sobre los documentos filtrados
+      {
+        $facet: {
+          //* Obtener el total absoluto de registros
+          totalCount: [
+            { $count: 'count' }
+          ],
+          //* Generar el ranking agrupando y limitando
+          ranking: [
+            {
+              $group: {
+                _id: '$action',
+                count: { $sum: 1 },
+              },
+            },
+            { $sort: { count: -1 } },
+            { $limit: limit },
+            {
+              $project: {
+                _id: 0,
+                action: '$_id',
+                count: 1,
+              },
+            },
+          ],
+        },
+      },
+    ];
+
+    const [result] = await this.connection.db
+      ?.collection('activitylogs')
+      .aggregate(pipeline)
+      .toArray() || [];
+
+    //* Extraer el total
+    const totalOperations = result?.totalCount[0]?.count || 0;
+    const ranking = result?.ranking || [];
+
+    //* Calcular el porcentaje para cada acción del ranking
+    const rankingWithPercentages = ranking.map((item: any) => ({
+      ...item,
+      percentage: totalOperations > 0
+        ? Number(((item.count / totalOperations) * 100).toFixed(2))
+        : 0,
+    }));
+
+    return {
+      period: {
+        startDate: startDate || 'Todo el histórico',
+        endDate: endDate || 'Todo el histórico',
+      },
+      limitApplied: limit,
+      totalOperationsInPeriod: totalOperations,
+      topActions: rankingWithPercentages,
     };
   }
 }

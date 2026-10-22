@@ -12,6 +12,7 @@ import { UserActivityReportDto } from './dto/user-activity-report.dto.js';
 import { UserReceivedResourcesDto } from './dto/user-received-resources.dto.js';
 import { OperationsSummaryDto } from './dto/operations-summary.dto.js';
 import { OperationsByPeriodDto } from './dto/operations-by-period.dto.js';
+import { TopActionsDto } from './dto/top-actions.dto.js';
 
 
 @UseGuards(JwtAuthGuard)
@@ -189,6 +190,26 @@ export class ReportsController {
 
     return this.reportsService.getOperationsByPeriod(
       dto.period,
+      dto.startDate,
+      dto.endDate,
+    );
+  }
+
+  @Get('top-actions')
+  async getTopSystemActions(
+    @Req() req: RequestWithUser,
+    @Query() dto: TopActionsDto,
+  ) {
+    const currentUserRole = req.user.role;
+
+    if (currentUserRole !== 'ADMIN') {
+      throw new ForbiddenException(
+        'Solo los administradores pueden consultar el ranking de las principales acciones',
+      );
+    }
+
+    return this.reportsService.getTopSystemActions(
+      dto.limit,
       dto.startDate,
       dto.endDate,
     );
