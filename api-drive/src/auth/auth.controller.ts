@@ -2,6 +2,7 @@ import { Controller, HttpCode, Post, Body, HttpStatus, UseGuards } from "@nestjs
 import { AuthService } from "./auth.service.js";
 import { LoginDto } from "./dto/login.dto.js";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard.js";
+import { RegisterDto } from "./dto/regiter.dto.js";
 
 @Controller('auth')
 export class AuthController {
@@ -19,6 +20,11 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async logout() {
     return { message: 'Cierre de sesión exitoso' };
+  }
+
+  @Post('register')
+  async register(@Body() registerDto: RegisterDto) {
+    return this.authService.registerPublicUser(registerDto);
   }
 
 }

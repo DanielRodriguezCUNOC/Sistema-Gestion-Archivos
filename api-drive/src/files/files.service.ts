@@ -6,12 +6,17 @@ import { GridFSBucket } from 'mongodb';
 import { Readable } from 'stream';
 import 'multer';
 import { PermissionLevel } from './utils/permission-level.enum.js';
+import { ActivityLogService } from '../activity-log/activity-log.service.js';
+import { ActivityAction } from '../activity-log/utils/activity-action.enum.js';
 
 @Injectable()
 export class FilesService implements OnModuleInit {
   private gridFSBucket!: GridFSBucket;
 
-  constructor(@InjectConnection() private readonly connection: Connection) { }
+  constructor(
+    @InjectConnection() private readonly connection: Connection,
+    private readonly activityLogService: ActivityLogService,
+  ) { }
 
   onModuleInit() {
     if (!this.connection.db) {
@@ -47,15 +52,27 @@ export class FilesService implements OnModuleInit {
       readableStream
         .pipe(uploadStream)
         .on('error', (error) => reject(error))
-        .on('finish', () => {
-          resolve({
-            id: uploadStream.id,
-            filename: file.originalname,
-            length: file.size,
-            contentType: file.mimetype,
-            folderId: folderId || null,
-            uploadDate: new Date(),
-          });
+        .on('finish', async () => {
+          try {
+            await this.activityLogService.logEvent(
+              ownerId,
+              ActivityAction.UPLOAD_FILE,
+              uploadStream.id.toString(),
+              'FILE',
+              file.originalname,
+            );
+
+            resolve({
+              id: uploadStream.id,
+              filename: file.originalname,
+              length: file.size,
+              contentType: file.mimetype,
+              folderId: folderId || null,
+              uploadDate: new Date(),
+            });
+          } catch (error) {
+            reject(error);
+          }
         });
     });
   }
@@ -89,6 +106,14 @@ export class FilesService implements OnModuleInit {
         'metadata.isTrash': true, 'metadata.deletedAt': new Date()
       }
     });
+
+    await this.activityLogService.logEvent(
+      ownerId,
+      ActivityAction.DELETE_FILE,
+      fileId,
+      'FILE',
+      file.filename,
+    );
 
     return { message: 'Archivo enviado a la papelera' };
   }
@@ -185,6 +210,17 @@ export class FilesService implements OnModuleInit {
     //* Funcion nativa de GridFS para renombrar el archivo
     await this.gridFSBucket.rename(_id, trimmedName)
 
+    await this.activityLogService.logEvent(
+      ownerId,
+      ActivityAction.RENAME_FILE,
+      fileId,
+      'FILE',
+      trimmedName,
+      {
+        previousName: files[0].filename,
+      },
+    );
+
     return {
       id: fileId,
       filename: trimmedName,
@@ -223,6 +259,18 @@ export class FilesService implements OnModuleInit {
       { $set: { 'metadata.folderId': destinationFolderObjectId } }
     );
 
+    await this.activityLogService.logEvent(
+      ownerId,
+      ActivityAction.MOVE_FILE,
+      fileId,
+      'FILE',
+      file.filename,
+      {
+        fromFolderId: file.metadata?.folderId?.toString() || null,
+        toFolderId: destinationFolderObjectId?.toString() || null,
+      },
+    );
+
     return {
       id: fileId,
       targetFolderId: destinationFolderObjectId ? destinationFolderObjectId.toString() : null,
@@ -252,6 +300,14 @@ export class FilesService implements OnModuleInit {
       'metadata.folderId': folderObjectId,
       'metadata.owner': ownerObjectId,
     });
+
+    await this.activityLogService.logEvent(
+      ownerId,
+      ActivityAction.DELETE_FOLDER,
+      folderId,
+      'FOLDER',
+      folderExists.filename || folderId,
+    );
   }
 
   async deleteFilesByFolderIds(folderIds: Types.ObjectId[], ownerId: string): Promise<number> {
@@ -329,6 +385,14 @@ export class FilesService implements OnModuleInit {
       { $set: { 'metadata.isTrash': false, 'metadata.deletedAt': null } }
     );
 
+    await this.activityLogService.logEvent(
+      ownerId,
+      ActivityAction.RESTORE_FILE,
+      fileId,
+      'FILE',
+      file.filename,
+    );
+
     return { message: 'Archivo restaurado correctamente' };
   }
 
@@ -355,6 +419,14 @@ export class FilesService implements OnModuleInit {
     //* Borrar chunks y metadata del archivo
     await this.gridFSBucket.delete(fileObjectId);
 
+    await this.activityLogService.logEvent(
+      ownerId,
+      ActivityAction.HARD_DELETE_FILE,
+      fileId,
+      'FILE',
+      file[0].filename,
+    );
+
     return { message: 'Archivo eliminado permanentemente' };
   }
 
@@ -367,6 +439,13 @@ export class FilesService implements OnModuleInit {
 
     for (const file of files) {
       await this.gridFSBucket.delete(file._id);
+      await this.activityLogService.logEvent(
+        ownerId,
+        ActivityAction.HARD_DELETE_FILE,
+        file._id.toString(),
+        'FILE',
+        file.filename,
+      );
     }
   }
 
@@ -379,6 +458,16 @@ export class FilesService implements OnModuleInit {
     },
       { $set: { 'metadata.isTrash': false, 'metadata.deletedAt': null } }
     );
+
+    for (const folderId of folderIds) {
+      await this.activityLogService.logEvent(
+        ownerId,
+        ActivityAction.RESTORE_FOLDER,
+        folderId.toString(),
+        'FOLDER',
+        folderId.toString(),
+      );
+    }
   }
 
   //* Compartir archivo
@@ -418,6 +507,18 @@ export class FilesService implements OnModuleInit {
       { $push: { 'metadata.sharedWith': { userId: targetUserObjectId, permission } } as any }
     )
 
+    await this.activityLogService.logEvent(
+      ownerId,
+      ActivityAction.SHARE_RESOURCE,
+      fileId,
+      'FILE',
+      file.filename,
+      {
+        targetUserId,
+        permission,
+      },
+    );
+
     return { message: 'Permiso actualizados correctamente' }
 
   }
@@ -436,6 +537,17 @@ export class FilesService implements OnModuleInit {
       throw new NotFoundException('Archivo no encontrado o el usuario no tenía permisos');
     }
 
+    await this.activityLogService.logEvent(
+      ownerId,
+      ActivityAction.REVOKE_SHARE,
+      fileId,
+      'FILE',
+      fileId,
+      {
+        targetUserId,
+      },
+    );
+
     return { message: 'Permiso revocado con éxito' };
   }
 
@@ -453,6 +565,20 @@ export class FilesService implements OnModuleInit {
       { 'metadata.owner': new Types.ObjectId(ownerId), 'metadata.folderId': { $in: folderIds } },
       { $push: { 'metadata.sharedWith': { userId: targetUserObjectId, permission } } as any }
     );
+
+    for (const folderId of folderIds) {
+      await this.activityLogService.logEvent(
+        ownerId,
+        ActivityAction.SHARE_RESOURCE,
+        folderId.toString(),
+        'FOLDER',
+        folderId.toString(),
+        {
+          targetUserId,
+          permission,
+        },
+      );
+    }
   }
 
   async revokeShareFilesByFolderIds(folderIds: Types.ObjectId[], ownerId: string, targetUserId: string) {
@@ -462,6 +588,19 @@ export class FilesService implements OnModuleInit {
       { 'metadata.owner': new Types.ObjectId(ownerId), 'metadata.folderId': { $in: folderIds } },
       { $pull: { 'metadata.sharedWith': { userId: targetUserObjectId } } as any }
     );
+
+    for (const folderId of folderIds) {
+      await this.activityLogService.logEvent(
+        ownerId,
+        ActivityAction.REVOKE_SHARE,
+        folderId.toString(),
+        'FOLDER',
+        folderId.toString(),
+        {
+          targetUserId,
+        },
+      );
+    }
   }
 
   async updateFileContent(
@@ -541,13 +680,28 @@ export class FilesService implements OnModuleInit {
       readableStream
         .pipe(uploadStream)
         .on('error', (err) => reject(err))
-        .on('finish', () => {
-          resolve({
-            id: fileId,
-            filename: file.filename,
-            version: nextVersion,
-            message: 'Archivo actualizado con éxito',
-          });
+        .on('finish', async () => {
+          try {
+            await this.activityLogService.logEvent(
+              userId,
+              ActivityAction.UPDATE_FILE,
+              fileId,
+              'FILE',
+              file.filename,
+              {
+                version: nextVersion,
+              },
+            );
+
+            resolve({
+              id: fileId,
+              filename: file.filename,
+              version: nextVersion,
+              message: 'Archivo actualizado con éxito',
+            });
+          } catch (error) {
+            reject(error);
+          }
         });
     });
   }

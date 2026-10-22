@@ -5,6 +5,9 @@ import * as bcrypt from 'bcrypt';
 import { User } from "./schemas/user.schema.js";
 import { Model } from "mongoose";
 import { LoginDto } from "./dto/login.dto.js";
+import { RegisterDto } from "./dto/regiter.dto.js";
+import { UsersService } from "../users/users.service.js";
+import { UserRole } from "../users/utils/user-role.enum.js";
 
 @Injectable()
 export class AuthService {
@@ -12,6 +15,7 @@ export class AuthService {
   constructor(
     @InjectModel(User.name) private readonly userModel: Model<User>,
     private readonly jwtService: JwtService,
+    private readonly usersService: UsersService,
   ) { }
 
   async login(loginDto: LoginDto) {
@@ -47,5 +51,8 @@ export class AuthService {
     }
   }
 
+  async registerPublicUser(registerDto: RegisterDto) {
+    return this.usersService.createUser(registerDto, UserRole.USER);
+  }
 
 }
