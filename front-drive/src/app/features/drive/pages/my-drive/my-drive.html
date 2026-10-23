@@ -1,7 +1,7 @@
-<div class="h-full flex flex-col">
+<div class="h-full flex flex-col relative">
   <div class="flex items-center justify-between mb-6 pb-4 border-b border-gray-200">
     <div class="flex items-center space-x-2 text-lg text-gray-700">
-      <button (click)="navigateTo(null)"
+      <button appDropTarget (itemDropped)="moveItem($event, null)" (click)="navigateTo(null)"
         class="hover:bg-gray-100 p-1 rounded transition-colors font-medium cursor-pointer"
         [class.text-indigo-600]="!driveService.currentFolderId()">
         Mi Unidad
@@ -9,7 +9,7 @@
 
       @for (crumb of driveService.filesStack(); track crumb.id) {
       <span class="text-gray-400">/</span>
-      <button (click)="navigateTo(crumb.id)"
+      <button appDropTarget(itemDropped)="moveItem($event, crumb.id)" (click)="navigateTo(crumb.id)"
         class="hover:bg-gray-100 p-1 rounded transition-colors font-medium cursor-pointer"
         [class.text-indigo-600]="driveService.currentFolderId() === crumb.id">
         {{ crumb.name }}
@@ -17,8 +17,9 @@
       }
     </div>
 
+    <!-- Boton nueva carpeta-->
     <div class="flex space-x-3">
-      <button
+      <button (click)="openCreateFolderModal()"
         class="px-4 py-2 bg-white border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center transition-colors">
         <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -26,13 +27,29 @@
         </svg>
         Nueva Carpeta
       </button>
-      <button
-        class="px-4 py-2 bg-indigo-600 text-white rounded-lg shadow-sm text-sm font-medium hover:bg-indigo-700 flex items-center transition-colors">
+
+      <!-- Input para seleccionar archivo, estará oculto-->
+      <input type="file" #fileInput class="hidden" (change)="onFileSelected($event)">
+
+      <button (click)="fileInput.click()" [disabled]="isUploading()"
+        class="px-4 py-2 bg-indigo-600 text-white rounded-lg shadow-sm text-sm font-medium hover:bg-indigo-700 flex items-center transition-colors disabled:opacity-75 disabled:cursor-not-allowed">
+
+        @if (isUploading()) {
+        <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none"
+          viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor"
+            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+          </path>
+        </svg>
+        Subiendo...
+        } @else {
         <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
             d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
         </svg>
         Subir Archivo
+        }
       </button>
     </div>
   </div>
@@ -50,37 +67,112 @@
       </path>
     </svg>
     <p class="text-lg font-medium">Esta carpeta está vacía</p>
-    <p class="text-sm">Usa el botón de subir.</p>
   </div>
   }
   @else {
   <div class="flex-1 overflow-y-auto pb-6">
 
+    <!-- Carpetas -->
     @if (driveService.folders().length > 0) {
     <div class="mb-8">
       <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">Carpetas</h3>
       <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
         @for (folder of driveService.folders(); track folder.id) {
-        <div (dblclick)="navigateTo(folder.id)"
-          class="group flex items-center p-4 bg-white border border-gray-200 rounded-xl hover:shadow-md hover:border-indigo-300 cursor-pointer transition-all select-none">
-          <svg class="w-8 h-8 text-indigo-400 mr-3 group-hover:text-indigo-500 transition-colors" fill="currentColor"
-            viewBox="0 0 20 20">
-            <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path>
-          </svg>
-          <span class="font-medium text-gray-700 truncate" [title]="folder.name">{{ folder.name }}</span>
+        <div appDropTarget (itemDropped)="moveItem($event, folder.id)" (dblclick)="navigateTo(folder.id)"
+          class="group relative flex items-center justify-between p-4 bg-white border border-gray-200 rounded-xl hover:shadow-md hover:border-indigo-300 cursor-pointer transition-all select-none">
+          <div class="flex items-center overflow-hidden">
+            <svg class="w-8 h-8 text-indigo-400 mr-3 shrink-0 group-hover:text-indigo-500 transition-colors"
+              fill="currentColor" viewBox="0 0 20 20">
+              <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path>
+            </svg>
+            <span class="font-medium text-gray-700 truncate" [title]="folder.name">{{ folder.name }}</span>
+          </div>
+
+          <!-- Botón Menú Carpeta -->
+          <button (click)="toggleMenu($event, folder.id)"
+            class="menu-trigger p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z">
+              </path>
+            </svg>
+          </button>
+
+          <!-- Dropdown Carpeta -->
+          @if (activeMenuId() === folder.id) {
+          <div
+            class="action-menu absolute top-12 right-2 w-48 bg-white rounded-lg shadow-xl border border-gray-100 z-10 py-1">
+            <button (click)="$event.stopPropagation(); deleteFolder(folder.id)"
+              class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center">
+              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16">
+                </path>
+              </svg>
+              Mover a Papelera
+            </button>
+          </div>
+          }
         </div>
         }
       </div>
     </div>
     }
 
+    <!-- Archivos -->
     @if (driveService.files().length > 0) {
     <div>
       <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">Archivos</h3>
       <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
         @for (file of driveService.files(); track file.id) {
-        <div
-          class="group relative flex flex-col p-4 bg-white border border-gray-200 rounded-xl hover:shadow-md hover:border-indigo-300 cursor-pointer transition-all">
+        <div draggable="true" (dragstart)="onDragStart($event, file.id)"
+          class="group relative flex flex-col p-4 bg-white border border-gray-200 rounded-xl hover:shadow-md hover:border-indigo-300 cursor-grab active:cursor-grabbing transition-all">
+
+          <!-- Botón Menú Archivo -->
+          <button (click)="toggleMenu($event, file.id)"
+            class="menu-trigger absolute top-2 right-2 p-1.5 bg-white/90 rounded-md text-gray-500 opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-indigo-600 hover:bg-indigo-50 transition-all shadow-sm z-10"
+            title="Opciones">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z">
+              </path>
+            </svg>
+          </button>
+
+          <!-- Dropdown Archivo -->
+          @if (activeMenuId() === file.id) {
+          <div
+            class="action-menu absolute top-10 right-2 w-48 bg-white rounded-lg shadow-xl border border-gray-100 z-20 py-1">
+            <button (click)="$event.stopPropagation(); downloadFile(file.id, file.filename)"
+              class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center">
+              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+              </svg>
+              Descargar
+            </button>
+            <button (click)="$event.stopPropagation(); openRenameFileModal(file); activeMenuId.set(null)"
+              class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center">
+              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z">
+                </path>
+              </svg>
+              Renombrar
+            </button>
+            <div class="border-t border-gray-100 my-1"></div>
+            <button (click)="$event.stopPropagation(); deleteFile(file.id)"
+              class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center">
+              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16">
+                </path>
+              </svg>
+              Mover a Papelera
+            </button>
+          </div>
+          }
+
           <div
             class="flex items-center justify-center h-20 mb-3 bg-gray-50 rounded-lg group-hover:bg-indigo-50 transition-colors">
             <svg class="w-10 h-10 text-gray-400 group-hover:text-indigo-400" fill="none" stroke="currentColor"
@@ -97,6 +189,45 @@
       </div>
     </div>
     }
+  </div>
+  }
+
+  @if (isCreateFolderModalOpen()) {
+  <div class="absolute inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+      <h2 class="text-lg font-bold text-gray-800 mb-4">Nueva Carpeta</h2>
+      <input type="text" [(ngModel)]="newFolderName" (keyup.enter)="confirmCreateFolder()"
+        placeholder="Nombre de la carpeta"
+        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all mb-6"
+        autofocus>
+      <div class="flex justify-end space-x-3">
+        <button (click)="closeCreateFolderModal()"
+          class="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancelar</button>
+        <button (click)="confirmCreateFolder()" [disabled]="!newFolderName().trim() || isProcessing()"
+          class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors">
+          Crear
+        </button>
+      </div>
+    </div>
+  </div>
+  }
+
+  @if (isRenameModalOpen()) {
+  <div class="absolute inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+      <h2 class="text-lg font-bold text-gray-800 mb-4">Renombrar archivo</h2>
+      <input type="text" [(ngModel)]="newName" (keyup.enter)="confirmRename()" placeholder="Nuevo nombre"
+        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all mb-6"
+        autofocus>
+      <div class="flex justify-end space-x-3">
+        <button (click)="closeRenameModal()"
+          class="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancelar</button>
+        <button (click)="confirmRename()" [disabled]="!newName().trim() || isProcessing()"
+          class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors">
+          Guardar
+        </button>
+      </div>
+    </div>
   </div>
   }
 </div>
