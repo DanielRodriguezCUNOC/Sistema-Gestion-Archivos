@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from "@nestjs/mongoose";
-import { Types } from "mongoose";
+import { Types, Document } from "mongoose";
 import { ActivityAction } from "../utils/activity-action.enum.js";
 
 @Schema({ timestamps: true })
@@ -7,13 +7,13 @@ export class ActivityLog extends Document {
   @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
   userId!: Types.ObjectId;
 
-  @Prop({ required: true, enum: Object.values(ActivityAction), index: true })
+  @Prop({ type: String, required: true, enum: Object.values(ActivityAction), index: true })
   action!: ActivityAction;
 
   @Prop({ type: Types.ObjectId, required: true, index: true })
   resourceId!: Types.ObjectId;
 
-  @Prop({ required: true, enum: ['FILE', 'FOLDER'] })
+  @Prop({ type: String, required: true, enum: ['FILE', 'FOLDER'] })
   resourceType!: 'FILE' | 'FOLDER';
 
   @Prop({ required: true })

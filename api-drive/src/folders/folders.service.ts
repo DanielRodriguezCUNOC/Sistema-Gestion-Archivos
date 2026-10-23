@@ -5,7 +5,6 @@ import { Folder } from './schemas/folder.schema.js';
 import { CreateFolderDto } from './dto/create-folder.dto.js';
 import { FilesService } from '../files/files.service.js';
 import { FilesStack } from './utils/file-stack.js';
-import { exec } from 'child_process';
 import { ActivityLogService } from '../activity-log/activity-log.service.js';
 import { ActivityAction } from '../activity-log/utils/activity-action.enum.js';
 

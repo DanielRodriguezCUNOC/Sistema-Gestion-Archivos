@@ -733,6 +733,10 @@ export class FilesService implements OnModuleInit {
       throw new BadRequestException('Solo se permite editar archivos .txt o .md');
     }
 
+    if (!file.metadata) {
+      throw new BadRequestException('El archivo no contiene metadatos válidos');
+    }
+
     const isOwner = file.metadata.owner.toString() === userId;
     const sharedEntry = file.metadata.sharedWith?.find(
       (s: any) => s.userId.toString() === userId,

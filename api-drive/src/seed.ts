@@ -1,7 +1,8 @@
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./app.module.js";
 import { getConnectionToken, getModelToken } from "@nestjs/mongoose";
-import { Connection, Model } from "mongoose";
+import { Model } from 'mongoose';
+import type { Connection } from 'mongoose';
 import { GridFSBucket } from "mongodb";
 import * as bcrypt from 'bcrypt';
 import { ActivityLog } from "./activity-log/schemas/activity-log.schema.js";
