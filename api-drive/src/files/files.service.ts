@@ -706,4 +706,58 @@ export class FilesService implements OnModuleInit {
     });
   }
 
+  async getEditableFileContent(fileId: string, userId: string) {
+    if (!Types.ObjectId.isValid(fileId)) {
+      throw new NotFoundException('ID de archivo no válido');
+    }
+
+    const fileObjectId = new Types.ObjectId(fileId);
+    const userObjectId = new Types.ObjectId(userId);
+
+    const files = await this.gridFSBucket.find({
+      _id: fileObjectId,
+      'metadata.isTrash': { $ne: true },
+      $or: [
+        { 'metadata.owner': userObjectId },
+        { 'metadata.sharedWith.userId': userObjectId },
+      ],
+    }).toArray();
+
+    if (!files || files.length === 0) {
+      throw new NotFoundException('Archivo no encontrado o sin acceso');
+    }
+
+    const file = files[0];
+    const fileName = file.filename.toLowerCase();
+    if (!fileName.endsWith('.txt') && !fileName.endsWith('.md')) {
+      throw new BadRequestException('Solo se permite editar archivos .txt o .md');
+    }
+
+    const isOwner = file.metadata.owner.toString() === userId;
+    const sharedEntry = file.metadata.sharedWith?.find(
+      (s: any) => s.userId.toString() === userId,
+    );
+    const hasEditPermission = sharedEntry && sharedEntry.permission === 'edit';
+
+    if (!isOwner && !hasEditPermission) {
+      throw new ForbiddenException('No tienes permisos de edición sobre este archivo');
+    }
+
+    const content = await new Promise<string>((resolve, reject) => {
+      const chunks: Buffer[] = [];
+      this.gridFSBucket
+        .openDownloadStream(fileObjectId)
+        .on('data', (chunk) => chunks.push(Buffer.from(chunk)))
+        .on('error', (error) => reject(error))
+        .on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    });
+
+    return {
+      id: fileObjectId.toString(),
+      filename: file.filename,
+      content,
+      version: file.metadata.version || 1,
+    };
+  }
+
 }

@@ -1,0 +1,35 @@
+<div class="h-full flex flex-col">
+  <div class="flex items-center justify-between mb-6 pb-4 border-b border-gray-200">
+    <h1 class="text-2xl font-semibold text-gray-800">Historial de Actividad</h1>
+    <button (click)="loadLogs()"
+      class="px-4 py-2 bg-white border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+      Actualizar
+    </button>
+  </div>
+
+  @if (isLoading()) {
+  <div class="flex-1 flex items-center justify-center">
+    <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
+  </div>
+  }
+  @else if (!logs().length) {
+  <div class="flex-1 flex flex-col items-center justify-center text-gray-500">
+    <p class="text-lg font-medium">No hay eventos registrados</p>
+    <p class="text-sm">Tus acciones en el sistema apareceran aqui.</p>
+  </div>
+  }
+  @else {
+  <div class="flex-1 overflow-y-auto pr-1">
+    <ol class="relative border-s border-gray-200">
+      @for (log of logs(); track log._id) {
+      <li class="mb-6 ms-4">
+        <div class="absolute w-3 h-3 bg-indigo-500 rounded-full mt-1.5 -inset-s-1.5 border border-white"></div>
+        <time class="mb-1 text-xs font-medium leading-none text-gray-500">{{ log.createdAt | date: 'medium' }}</time>
+        <h3 class="text-sm font-semibold text-gray-800">{{ toHumanMessage(log) }}</h3>
+        <p class="text-xs text-gray-500 mt-1">Tipo: {{ log.resourceType }} | Accion: {{ log.action }}</p>
+      </li>
+      }
+    </ol>
+  </div>
+  }
+</div>

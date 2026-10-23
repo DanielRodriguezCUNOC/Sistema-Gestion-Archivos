@@ -3,12 +3,13 @@ import { Component, HostListener, inject, signal } from '@angular/core';
 import { FileSizePipe } from '../../../../shared/pipes/file-size.pipe';
 import { DriveService } from '../../services/drive.service';
 import { FormsModule } from '@angular/forms';
-import { FileItem } from '../../../../core/models/drive.model';
+import { FileItem, Folder, ShareResourceDto } from '../../../../core/models/drive.model';
 import { DropTargetDirective } from '../../../../shared/directives/drop-target.directive';
+import { ShareModal } from '../../../../shared/components/share-modal/share-modal';
 
 @Component({
   selector: 'app-my-drive',
-  imports: [CommonModule, FileSizePipe, FormsModule, DropTargetDirective],
+  imports: [CommonModule, FileSizePipe, FormsModule, DropTargetDirective, ShareModal],
   templateUrl: './my-drive.html',
   styleUrl: './my-drive.css',
 })
@@ -20,11 +21,38 @@ export class MyDrive {
   isCreateFolderModalOpen = signal(false);
   newFolderName = signal('');
   isRenameModalOpen = signal(false);
-  itemToRename = signal<FileItem | null>(null);
+  itemToRename = signal<{ id: string; name: string; type: 'file' | 'folder' } | null>(null);
   newName = signal('');
   isProcessing = signal(false);
   isUploading = signal(false);
   activeMenuId = signal<string | null>(null);
+  itemToShare = signal<{ id: string, name: string, isFolder: boolean } | null>(null);
+  isEditModalOpen = signal(false);
+  editedFile = signal<{ id: string; filename: string; version: number } | null>(null);
+  editContent = signal('');
+  isSavingEdit = signal(false);
+
+  openShareModal(id: string, name: string, isFolder: boolean): void {
+    this.itemToShare.set({ id, name, isFolder });
+    this.activeMenuId.set(null);
+  }
+
+  onShareConfirm(data: ShareResourceDto): void {
+    const item = this.itemToShare();
+    if (!item) return;
+
+    const request$ = item.isFolder
+      ? this.driveService.shareFolder(item.id, data)
+      : this.driveService.shareFile(item.id, data);
+
+    request$.subscribe({
+      next: () => this.itemToShare.set(null),
+      error: (err) => {
+        console.error('Error al compartir recurso', err);
+        this.itemToShare.set(null);
+      }
+    })
+  }
 
   //* Método para inicializar el drag
   onDragStart(event: DragEvent, fileId: string): void {
@@ -87,8 +115,14 @@ export class MyDrive {
 
   //* Renombrar 
   openRenameFileModal(file: FileItem): void {
-    this.itemToRename.set(file);
+    this.itemToRename.set({ id: file.id, name: file.filename, type: 'file' });
     this.newName.set(file.filename);
+    this.isRenameModalOpen.set(true);
+  }
+
+  openRenameFolderModal(folder: Folder): void {
+    this.itemToRename.set({ id: folder.id, name: folder.name, type: 'folder' });
+    this.newName.set(folder.name);
     this.isRenameModalOpen.set(true);
   }
 
@@ -99,11 +133,15 @@ export class MyDrive {
 
   confirmRename(): void {
     const name = this.newName().trim();
-    const file = this.itemToRename();
-    if (!name || !file) return;
+    const item = this.itemToRename();
+    if (!name || !item) return;
 
     this.isProcessing.set(true);
-    this.driveService.renameFile(file.id, { filename: name })
+    const request$ = item.type === 'folder'
+      ? this.driveService.renameFolder(item.id, { name })
+      : this.driveService.renameFile(item.id, { filename: name });
+
+    request$
       .subscribe({
         next: () => {
           this.closeRenameModal();
@@ -111,6 +149,71 @@ export class MyDrive {
         },
         error: () => this.isProcessing.set(false)
       });
+  }
+
+  isTextEditable(file: FileItem): boolean {
+    const lower = file.filename.toLowerCase();
+    return lower.endsWith('.txt') || lower.endsWith('.md');
+  }
+
+  openEditModal(file: FileItem): void {
+    if (!this.isTextEditable(file)) {
+      return;
+    }
+
+    this.activeMenuId.set(null);
+    this.isProcessing.set(true);
+    this.driveService.getEditableFileContent(file.id).subscribe({
+      next: (response) => {
+        this.editedFile.set({
+          id: response.id,
+          filename: response.filename,
+          version: response.version,
+        });
+        this.editContent.set(response.content);
+        this.isEditModalOpen.set(true);
+        this.isProcessing.set(false);
+      },
+      error: (err) => {
+        console.error('Error al abrir editor', err);
+        this.isProcessing.set(false);
+      },
+    });
+  }
+
+  closeEditModal(): void {
+    this.isEditModalOpen.set(false);
+    this.editedFile.set(null);
+    this.editContent.set('');
+  }
+
+  saveEditedFile(): void {
+    const file = this.editedFile();
+    if (!file) {
+      return;
+    }
+
+    this.isSavingEdit.set(true);
+    this.driveService.updateFileContent(file.id, {
+      content: this.editContent(),
+      version: file.version,
+    }).subscribe({
+      next: (response) => {
+        this.isSavingEdit.set(false);
+        this.closeEditModal();
+        if (response?.version) {
+          file.version = response.version;
+        }
+      },
+      error: (err) => {
+        this.isSavingEdit.set(false);
+        if (err?.status === 409) {
+          alert('Conflicto de versión: el archivo fue modificado por otro usuario. Recarga y vuelve a intentar.');
+          return;
+        }
+        console.error('Error al guardar cambios de archivo', err);
+      },
+    });
   }
 
   //* Se ejecuta cuando se selecciona un archivo para subir

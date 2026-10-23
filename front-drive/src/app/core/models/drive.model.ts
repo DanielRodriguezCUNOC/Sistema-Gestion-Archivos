@@ -53,8 +53,18 @@ export interface ShareResourceDto {
   permission: PermissionLevel;
 }
 
+export interface ShareUserSearchResult {
+  id: string;
+  name: string;
+  email: string;
+}
+
 export interface RenameFileDto {
   filename: string;
+}
+
+export interface RenameFolderDto {
+  name: string;
 }
 
 export interface MoveFileDto {
@@ -62,6 +72,13 @@ export interface MoveFileDto {
 }
 
 export interface UpdateFileContentDto {
+  content: string;
+  version: number;
+}
+
+export interface EditableFileContentResponse {
+  id: string;
+  filename: string;
   content: string;
   version: number;
 }

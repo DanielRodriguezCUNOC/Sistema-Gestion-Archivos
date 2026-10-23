@@ -3,7 +3,11 @@ import { FoldersService } from './folders.service.js';
 import { CreateFolderDto } from './dto/create-folder.dto.js';
 import type { RequestWithUser } from '../auth/utils/RequestWithUser.js';
 import { ShareFolderDto } from './dto/share-folder/dto.js';
+import { RenameFolderDto } from './dto/rename-folder.dto.js';
+import { UseGuards } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 
+@UseGuards(JwtAuthGuard)
 @Controller('folders')
 export class FoldersController {
   constructor(private readonly foldersService: FoldersService) { }
@@ -42,6 +46,16 @@ export class FoldersController {
   ) {
     const ownerId = req.user.sub || req.user.id
     return this.foldersService.deleteFolder(id, ownerId);
+  }
+
+  @Patch(':id/rename')
+  async renameFolder(
+    @Param('id') id: string,
+    @Body() renameFolderDto: RenameFolderDto,
+    @Req() req: RequestWithUser,
+  ) {
+    const ownerId = req.user.sub || req.user.id;
+    return this.foldersService.renameFolder(id, ownerId, renameFolderDto.name);
   }
 
   @Get('content')

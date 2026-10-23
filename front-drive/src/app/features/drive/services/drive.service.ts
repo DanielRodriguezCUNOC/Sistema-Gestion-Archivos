@@ -1,6 +1,6 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { Observable, tap } from 'rxjs';
+import { catchError, forkJoin, Observable, of, tap } from 'rxjs';
 import {
   Folder,
   FileItem,
@@ -8,8 +8,11 @@ import {
   FolderContentResponse,
   CreateFolderDto,
   ShareResourceDto,
+  ShareUserSearchResult,
   RenameFileDto,
+  RenameFolderDto,
   MoveFileDto,
+  EditableFileContentResponse,
   UpdateFileContentDto,
 } from '../../../core/models/drive.model';
 
@@ -33,6 +36,10 @@ export class DriveService {
 
   //* Propiedad computada para determinar si hay contenido en la carpeta actual
   readonly hasContent = computed(() => this.folders().length > 0 || this.files().length > 0);
+  readonly trashedFolders = signal<Folder[]>([]);
+  readonly trashedFiles = signal<FileItem[]>([]);
+  readonly sharedFolders = signal<Folder[]>([]);
+  readonly sharedFiles = signal<any[]>([]);
 
   /*
    * Carga el contenido de una carpeta
@@ -196,6 +203,14 @@ export class DriveService {
     );
   }
 
+  renameFolder(folderId: string, dto: RenameFolderDto): Observable<any> {
+    return this.http.patch(`${this.baseUrl}/folders/${folderId}/rename`, dto).pipe(
+      tap(() => {
+        this.loadFolderContent(this.currentFolderId(), this.searchQuery(), this.sortBy(), this.sortOrder());
+      }),
+    );
+  }
+
 
   //* Mueve un archivo a otra carpeta
 
@@ -214,6 +229,11 @@ export class DriveService {
     return this.http.post(`${this.baseUrl}/files/${fileId}/share`, dto);
   }
 
+  searchUsers(query: string): Observable<ShareUserSearchResult[]> {
+    const params = new HttpParams().set('q', query.trim());
+    return this.http.get<ShareUserSearchResult[]>(`${this.baseUrl}/users/search`, { params });
+  }
+
 
   //* Revoca permisos de un archivo compartido
 
@@ -224,8 +244,16 @@ export class DriveService {
 
   //* Actualiza el contenido de un archivo de texto/markdown
 
+  getEditableFileContent(fileId: string): Observable<EditableFileContentResponse> {
+    return this.http.get<EditableFileContentResponse>(`${this.baseUrl}/files/${fileId}/content`);
+  }
+
   updateFileContent(fileId: string, dto: UpdateFileContentDto): Observable<any> {
-    return this.http.put(`${this.baseUrl}/files/${fileId}/content`, dto);
+    return this.http.put(`${this.baseUrl}/files/${fileId}/content`, dto).pipe(
+      tap(() => {
+        this.loadFolderContent(this.currentFolderId(), this.searchQuery(), this.sortBy(), this.sortOrder());
+      }),
+    );
   }
 
 
@@ -252,5 +280,60 @@ export class DriveService {
   searchFiles(name: string): Observable<FileItem[]> {
     const params = new HttpParams().set('name', name);
     return this.http.get<FileItem[]>(`${this.baseUrl}/files/search`, { params });
+  }
+
+
+  //* Carga el contenido de la papelera llamando a los métodos getTrashedFolders y getTrashedFiles
+
+  loadTrash(): void {
+    this.isLoading.set(true);
+    forkJoin({
+      folders: this.getTrashedFolders(),
+      files: this.getTrashedFiles()
+    }).subscribe({
+      next: (result) => {
+        this.trashedFolders.set(result.folders);
+        this.trashedFiles.set(result.files);
+        this.isLoading.set(false);
+      },
+      error: (err) => {
+        console.error('Error al cargar la papelera', err);
+        this.isLoading.set(false);
+      }
+    })
+  }
+
+  //* vaciar la papelera
+  emptyTrash(): Observable<any> {
+    const folderDeletions = this.trashedFolders().map(folder => this.hardDeleteFolder(folder.id).pipe(catchError(() => of(null))));
+
+    const fileDeletions = this.trashedFiles().map(file => this.hardDeleteFile(file.id).pipe(catchError(() => of(null))));
+
+    const allDeletions = [...folderDeletions, ...fileDeletions];
+
+    if (allDeletions.length === 0) return of(null);
+
+    return forkJoin(allDeletions).pipe(
+      tap(() => {
+        this.loadTrash();
+      })
+    );
+  }
+
+  //* Cargar los recursos compartidos con el usuario actual
+  loadSharedWithMe(): void {
+    this.isLoading.set(true);
+    this.http.get<{ folders: Folder[], files: any[] }>(`${this.baseUrl}/shares/shared-with-me`)
+      .subscribe({
+        next: (response) => {
+          this.sharedFolders.set(response.folders || []);
+          this.sharedFiles.set(response.files || []);
+          this.isLoading.set(false);
+        },
+        error: (err) => {
+          console.error('Error al cargar elementos compartidos', err);
+          this.isLoading.set(false);
+        }
+      });
   }
 }

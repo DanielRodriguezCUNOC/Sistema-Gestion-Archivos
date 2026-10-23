@@ -185,6 +185,48 @@ export class FoldersService {
 
   }
 
+  async renameFolder(folderId: string, ownerId: string, newName: string) {
+    if (!Types.ObjectId.isValid(folderId)) {
+      throw new NotFoundException('Carpeta no encontrada en la base de datos');
+    }
+
+    const folderObjectId = new Types.ObjectId(folderId);
+    const ownerObjectId = new Types.ObjectId(ownerId);
+
+    const folder = await this.folderModel.findOne({
+      _id: folderObjectId,
+      owner: ownerObjectId,
+      isTrash: false,
+    }).exec();
+
+    if (!folder) {
+      throw new NotFoundException('Carpeta no encontrada o sin acceso');
+    }
+
+    const previousName = folder.name;
+    const trimmedName = newName.trim();
+
+    folder.name = trimmedName;
+    await folder.save();
+
+    await this.activityLogService.logEvent(
+      ownerId,
+      ActivityAction.RENAME_FOLDER,
+      folderId,
+      'FOLDER',
+      trimmedName,
+      {
+        previousName,
+      },
+    );
+
+    return {
+      id: folderId,
+      name: trimmedName,
+      message: 'Carpeta renombrada correctamente',
+    };
+  }
+
   //* Metodo que obtiene los IDs de las subcarpetas 
   private async getAllSubfolderIds(initialFolderId: Types.ObjectId,
     ownerObjectId: Types.ObjectId,

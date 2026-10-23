@@ -17,6 +17,11 @@ export const DRIVE_ROUTES: Routes = [
       import('./pages/trash/trash.js').then((m) => m.Trash),
   },
   {
+    path: 'activity-log',
+    loadComponent: () =>
+      import('../../features/activity/pages/activity-log/activity-log.js').then((m) => m.ActivityLog),
+  },
+  {
     path: '',
     redirectTo: 'my-drive',
     pathMatch: 'full',

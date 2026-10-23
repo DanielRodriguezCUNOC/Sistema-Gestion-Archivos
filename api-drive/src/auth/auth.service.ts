@@ -2,7 +2,7 @@ import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { InjectModel } from "@nestjs/mongoose";
 import { JwtService } from "@nestjs/jwt";
 import * as bcrypt from 'bcrypt';
-import { User } from "./schemas/user.schema.js";
+import { User } from "../users/schemas/user.schema.js";
 import { Model } from "mongoose";
 import { LoginDto } from "./dto/login.dto.js";
 import { RegisterDto } from "./dto/regiter.dto.js";
@@ -42,9 +42,10 @@ export class AuthService {
 
     //* Retornar token JWT
     return {
-      access_token: this.jwtService.sign(payload),
+      accessToken: this.jwtService.sign(payload),
       user: {
         id: user._id,
+        name: (user as any).name,
         email: user.email,
         role: user.role,
       }

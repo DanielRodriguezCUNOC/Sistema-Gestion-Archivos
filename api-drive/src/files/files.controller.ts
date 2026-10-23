@@ -13,6 +13,7 @@ import {
   Query,
   Patch,
   Put,
+  UseGuards,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -23,7 +24,9 @@ import { RenameFileDto } from './dto/rename-file.dto.js';
 import { MoveFileDto } from './dto/move-file.dto.js';
 import { ShareFileDto } from './dto/share-file.dto.js';
 import { UpdateFileContentDto } from './dto/update-file-content.dto.js';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 
+@UseGuards(JwtAuthGuard)
 @Controller('files')
 export class FilesController {
   constructor(private readonly filesService: FilesService) { }
@@ -123,6 +126,15 @@ export class FilesController {
     });
 
     downloadStream.pipe(res);
+  }
+
+  @Get(':id/content')
+  async getEditableFileContent(
+    @Param('id') id: string,
+    @Req() req: RequestWithUser,
+  ) {
+    const userId = req.user.sub || req.user.id;
+    return this.filesService.getEditableFileContent(id, userId);
   }
 
   @Delete(':id')
