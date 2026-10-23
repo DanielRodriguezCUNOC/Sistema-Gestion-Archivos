@@ -21,6 +21,12 @@ export class ActivityLog extends Document {
 
   @Prop({ type: Object, default: {} })
   details!: Record<string, any>;
+
+  @Prop()
+  createdAt!: Date;
+
+  @Prop()
+  updatedAt!: Date;
 }
 
 export const ActivityLogSchema = SchemaFactory.createForClass(ActivityLog);
