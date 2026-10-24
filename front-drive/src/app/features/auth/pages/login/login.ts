@@ -41,9 +41,13 @@ export class Login {
     const dto: LoginDto = this.loginForm.getRawValue();
 
     this.authService.login(dto).subscribe({
-      next: () => {
+      next: (response) => {
         this.isLoading.set(false);
-        this.router.navigate(['/drive']);
+        if (response.user.role?.toLowerCase() === 'admin') {
+          this.router.navigate(['/dashboard/admin']);
+        } else {
+          this.router.navigate(['/drive/my-drive']);
+        }
       },
       error: (error) => {
         this.isLoading.set(false);

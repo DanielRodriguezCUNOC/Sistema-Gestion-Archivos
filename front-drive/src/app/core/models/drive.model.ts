@@ -6,6 +6,7 @@ export interface SharedUser {
 }
 
 export interface Folder {
+  _id?: string;
   id: string;
   name: string;
   owner: string;
@@ -18,6 +19,7 @@ export interface Folder {
 }
 
 export interface FileItem {
+  _id?: string;
   id: string;
   filename: string;
   length: number;

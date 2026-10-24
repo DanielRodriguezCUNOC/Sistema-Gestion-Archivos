@@ -25,6 +25,7 @@ import { MoveFileDto } from './dto/move-file.dto.js';
 import { ShareFileDto } from './dto/share-file.dto.js';
 import { UpdateFileContentDto } from './dto/update-file-content.dto.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
+import { ParseObjectIdPipe } from '../common/pipes/parse-object-id.pipe.js';
 
 @UseGuards(JwtAuthGuard)
 @Controller('files')
@@ -37,14 +38,13 @@ export class FilesController {
       storage: memoryStorage(),
       limits: { fileSize: 50 * 1024 * 1024 }, //* Límite de 50MB
       fileFilter: (req, file, callback) => {
-        //* Restringimos a txt y .md
-        const allowedMimeTypes = ['text/plain', 'text/markdown', 'text/x-markdown']
-        const isAllowedExtension = file.originalname.match(/\.(txt|md)$/i)
+        const allowedMimeTypes = ['text/plain', 'text/markdown', 'text/x-markdown'];
+        const isAllowedExtension = file.originalname.match(/\.(txt|md)$/i);
 
-        if (!allowedMimeTypes.includes(file.mimetype) || !isAllowedExtension) {
-          callback(null, true)
+        if (allowedMimeTypes.includes(file.mimetype) && isAllowedExtension) {
+          callback(null, true);
         } else {
-          callback(new BadRequestException('Solo se permiten archivos de texto (.txt, .md)'), false)
+          callback(new BadRequestException('Solo se permiten archivos de texto (.txt, .md)'), false);
         }
       },
     }),
@@ -78,20 +78,26 @@ export class FilesController {
   }
 
   @Patch('trash/:id/restore')
-  async restoreFile(@Param('id') id: string, @Req() req: RequestWithUser) {
+  async restoreFile(
+    @Param('id', ParseObjectIdPipe) id: string,
+    @Req() req: RequestWithUser,
+  ) {
     const ownerId = req.user.sub || req.user.id;
     return this.filesService.restoreFile(id, ownerId);
   }
 
   @Delete('trash/:id/hard')
-  async hardDeleteFile(@Param('id') id: string, @Req() req: RequestWithUser) {
+  async hardDeleteFile(
+    @Param('id', ParseObjectIdPipe) id: string,
+    @Req() req: RequestWithUser,
+  ) {
     const ownerId = req.user.sub || req.user.id;
     return this.filesService.hardDeleteFile(id, ownerId);
   }
 
   @Get('view/:id')
   async viewFile(
-    @Param('id') id: string,
+    @Param('id', ParseObjectIdPipe) id: string,
     @Req() req: RequestWithUser,
     @Res() res: Response,
   ) {
@@ -110,11 +116,11 @@ export class FilesController {
 
   @Get('download/:id')
   async downloadFile(
-    @Param('id') id: string,
+    @Param('id', ParseObjectIdPipe) id: string,
     @Req() req: RequestWithUser,
     @Res() res: Response,
   ) {
-    const ownerId = req.user.sub || req.user.id
+    const ownerId = req.user.sub || req.user.id;
     const { fileInfo, downloadStream } = await this.filesService.getFileStream(id, ownerId);
 
     const encodedFilename = encodeURIComponent(fileInfo.filename);
@@ -130,7 +136,7 @@ export class FilesController {
 
   @Get(':id/content')
   async getEditableFileContent(
-    @Param('id') id: string,
+    @Param('id', ParseObjectIdPipe) id: string,
     @Req() req: RequestWithUser,
   ) {
     const userId = req.user.sub || req.user.id;
@@ -138,36 +144,37 @@ export class FilesController {
   }
 
   @Delete(':id')
-  async deleteFile(@Param('id') id: string, @Req() req: RequestWithUser) {
-    const ownerId = req.user.sub || req.user.id
+  async deleteFile(
+    @Param('id', ParseObjectIdPipe) id: string,
+    @Req() req: RequestWithUser,
+  ) {
+    const ownerId = req.user.sub || req.user.id;
     return this.filesService.deleteFile(id, ownerId);
   }
 
-  //* Renonmbrar archivo
   @Patch(':id/rename')
   async renameFile(
-    @Param('id') id: string,
+    @Param('id', ParseObjectIdPipe) id: string,
     @Req() req: RequestWithUser,
     @Body() renameFileDto: RenameFileDto
   ) {
-    const ownerId = req.user.sub || req.user.id
+    const ownerId = req.user.sub || req.user.id;
     return this.filesService.renameFile(id, ownerId, renameFileDto.filename);
   }
 
-  //* Mover archivo a otra carpeta
   @Patch(':id/move')
   async moveFile(
-    @Param('id') id: string,
+    @Param('id', ParseObjectIdPipe) id: string,
     @Req() req: RequestWithUser,
     @Body() moveFileDto: MoveFileDto
   ) {
-    const ownerId = req.user.sub || req.user.id
+    const ownerId = req.user.sub || req.user.id;
     return this.filesService.moveFile(id, ownerId, moveFileDto.targetFolderId);
   }
 
   @Post(':id/share')
   async shareFile(
-    @Param('id') id: string,
+    @Param('id', ParseObjectIdPipe) id: string,
     @Body() shareFileDto: ShareFileDto,
     @Req() req: RequestWithUser
   ) {
@@ -177,8 +184,8 @@ export class FilesController {
 
   @Delete(':id/share/:userId')
   async revokeShare(
-    @Param('id') fileId: string,
-    @Param('userId') targetUserId: string,
+    @Param('id', ParseObjectIdPipe) fileId: string,
+    @Param('userId', ParseObjectIdPipe) targetUserId: string,
     @Req() req: RequestWithUser
   ) {
     const ownerId = req.user.sub || req.user.id;
@@ -187,7 +194,7 @@ export class FilesController {
 
   @Put(':id/content')
   async updateFileContent(
-    @Param('id') id: string,
+    @Param('id', ParseObjectIdPipe) id: string,
     @Req() req: RequestWithUser,
     @Body() updateDto: UpdateFileContentDto,
   ) {

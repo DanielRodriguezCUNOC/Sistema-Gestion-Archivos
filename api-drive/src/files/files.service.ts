@@ -87,7 +87,7 @@ export class FilesService implements OnModuleInit {
     const ownerObjectId = new Types.ObjectId(ownerId);
 
     //* Verificar si el archivo existe y le pertenece al usuario
-    const file = await this.connection.db?.collection('UploadedFiles.files').findOne({
+    const file = await this.connection.db?.collection('uploads.files').findOne({
       _id: fileObjectId,
       'metadata.owner': ownerObjectId
     })
@@ -126,39 +126,38 @@ export class FilesService implements OnModuleInit {
     order: 'asc' | 'desc' = 'asc',
   ) {
     const query: Record<string, any> = {
-
-      'metadata.isTrash': { $ne: true }, //* Excluir archivos en papelera
+      'metadata.isTrash': { $ne: true },
       $or: [
-        { 'metadata.owner': new Types.ObjectId(ownerId), },
-        { 'metadata.sharedWith.userId': new Types.ObjectId(ownerId) }
+        { 'metadata.owner': new Types.ObjectId(ownerId) },
+        { 'metadata.sharedWith.userId': new Types.ObjectId(ownerId) },
       ],
-    }
+    };
 
-    //* Si hay término de búsqueda, se agrega a la consulta
     if (search && search.trim() !== '') {
-      query.filename = { $regex: search.trim(), $options: 'i' }
+      query.filename = { $regex: search.trim(), $options: 'i' };
     } else {
-      //* si no hay busqueda, trae la carpeta solicitada
-      query['metadata.folderId'] = folderId ? new Types.ObjectId(folderId) : null
+      query['metadata.folderId'] = (folderId && Types.ObjectId.isValid(folderId))
+        ? new Types.ObjectId(folderId)
+        : { $in: [null, undefined] };
     }
 
-    //* Criterios de ordenamiento
-    let sortField = 'filename'
-    if (sortBy === 'date') sortField = 'uploadDate'
-    if (sortBy === 'size') sortField = 'length'
+    let sortField = 'filename';
+    if (sortBy === 'date') sortField = 'uploadDate';
+    if (sortBy === 'size') sortField = 'length';
 
-    const sortOrder = order === 'desc' ? -1 : 1
+    const sortOrder = order === 'desc' ? -1 : 1;
 
-    const files = await this.gridFSBucket.find(query).sort({ [sortField]: sortOrder }).toArray()
+    const files = await this.gridFSBucket.find(query).sort({ [sortField]: sortOrder }).toArray();
 
     return files.map((file) => ({
-      id: file._id,
+      _id: file._id.toString(),
+      id: file._id.toString(),
       filename: file.filename,
       length: file.length,
       uploadDate: file.uploadDate,
       contentType: file.metadata?.contentType,
-      folderId: file.metadata?.folderId || null,
-    }))
+      folderId: file.metadata?.folderId ? file.metadata.folderId.toString() : null,
+    }));
   }
 
   //* Obtener metadata y contenido de un archivo para descarga o visualización
@@ -344,45 +343,60 @@ export class FilesService implements OnModuleInit {
     }))
   }
 
-  //* Listar archivos en papelera
   async getTrashedFiles(ownerId: string) {
-
     const files = await this.gridFSBucket.find({
       'metadata.owner': new Types.ObjectId(ownerId),
-      'metadata.isTrash': true, //* Solo archivos en papelera
-    }).toArray()
+      'metadata.isTrash': true,
+    }).toArray();
 
     return files.map((file) => ({
-      id: file._id,
+      _id: file._id.toString(),
+      id: file._id.toString(),
       filename: file.filename,
       length: file.length,
       deletedAt: file.metadata?.deletedAt || null,
       contentType: file.metadata?.contentType,
-    }))
+      folderId: file.metadata?.folderId ? file.metadata.folderId.toString() : null,
+    }));
   }
 
-  //* Restaurar archivo desde papelera
   async restoreFile(fileId: string, ownerId: string) {
-    if (!Types.ObjectId.isValid(fileId)) {
-      throw new NotFoundException('Archivo no encontrado en la base de datos');
+    if (!fileId || !Types.ObjectId.isValid(fileId)) {
+      throw new BadRequestException('ID de archivo no válido');
     }
     const fileObjectId = new Types.ObjectId(fileId);
+    const ownerObjectId = new Types.ObjectId(ownerId);
 
-    //* Verificar si el archivo existe y le pertenece al usuario
     const file = await this.connection.db?.collection('uploads.files').findOne({
       _id: fileObjectId,
-      'metadata.owner': new Types.ObjectId(ownerId),
-      'metadata.isTrash': true, //* Solo archivos en papelera
+      'metadata.owner': ownerObjectId,
+      'metadata.isTrash': true,
     });
 
     if (!file) {
       throw new NotFoundException('Archivo no encontrado o no tienes permiso para acceder a él');
     }
 
-    //* Restaurar el archivo desde la papelera
+    let targetFolderId = file.metadata?.folderId || null;
+    if (targetFolderId) {
+      const folderExists = await this.connection.db?.collection('folders').findOne({
+        _id: targetFolderId,
+        isTrash: false,
+      });
+      if (!folderExists) {
+        targetFolderId = null;
+      }
+    }
+
     await this.connection.db?.collection('uploads.files').updateOne(
       { _id: fileObjectId },
-      { $set: { 'metadata.isTrash': false, 'metadata.deletedAt': null } }
+      {
+        $set: {
+          'metadata.isTrash': false,
+          'metadata.deletedAt': null,
+          'metadata.folderId': targetFolderId,
+        },
+      },
     );
 
     await this.activityLogService.logEvent(
@@ -396,20 +410,17 @@ export class FilesService implements OnModuleInit {
     return { message: 'Archivo restaurado correctamente' };
   }
 
-  //* Eliminar archivo permanentemente
   async hardDeleteFile(fileId: string, ownerId: string) {
-
-    if (!Types.ObjectId.isValid(fileId)) {
-      throw new NotFoundException('Archivo no encontrado en la base de datos');
+    if (!fileId || !Types.ObjectId.isValid(fileId)) {
+      throw new BadRequestException('ID de archivo no válido');
     }
 
     const fileObjectId = new Types.ObjectId(fileId);
 
-    //* Verificar si el archivo existe y le pertenece al usuario
     const file = await this.gridFSBucket.find({
       _id: fileObjectId,
       'metadata.owner': new Types.ObjectId(ownerId),
-      'metadata.isTrash': true, //* Solo archivos en papelera
+      'metadata.isTrash': true,
     }).toArray();
 
     if (!file || file.length === 0) {

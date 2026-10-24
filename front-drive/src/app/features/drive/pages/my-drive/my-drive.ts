@@ -6,10 +6,11 @@ import { FormsModule } from '@angular/forms';
 import { FileItem, Folder, ShareResourceDto } from '../../../../core/models/drive.model';
 import { DropTargetDirective } from '../../../../shared/directives/drop-target.directive';
 import { ShareModal } from '../../../../shared/components/share-modal/share-modal';
+import { FileEditorModal } from '../../../../shared/components/file-editor-modal/file-editor-modal';
 
 @Component({
   selector: 'app-my-drive',
-  imports: [CommonModule, FileSizePipe, FormsModule, DropTargetDirective, ShareModal],
+  imports: [CommonModule, FileSizePipe, FormsModule, DropTargetDirective, ShareModal, FileEditorModal],
   templateUrl: './my-drive.html',
   styleUrl: './my-drive.css',
 })
@@ -32,8 +33,9 @@ export class MyDrive {
   editContent = signal('');
   isSavingEdit = signal(false);
 
-  openShareModal(id: string, name: string, isFolder: boolean): void {
-    this.itemToShare.set({ id, name, isFolder });
+  openShareModal(id?: string, name?: string, isFolder?: boolean): void {
+    if (!id) return;
+    this.itemToShare.set({ id, name: name || '', isFolder: !!isFolder });
     this.activeMenuId.set(null);
   }
 
@@ -47,34 +49,30 @@ export class MyDrive {
 
     request$.subscribe({
       next: () => this.itemToShare.set(null),
-      error: (err) => {
-        console.error('Error al compartir recurso', err);
+      error: () => {
         this.itemToShare.set(null);
       }
-    })
+    });
   }
 
-  //* Método para inicializar el drag
-  onDragStart(event: DragEvent, fileId: string): void {
-    if (event.dataTransfer) {
+  onDragStart(event: DragEvent, fileId?: string): void {
+    if (fileId && event.dataTransfer) {
       event.dataTransfer.setData('text/plain', fileId);
       event.dataTransfer.effectAllowed = 'move';
     }
   }
 
-  //* Método para procesar el drop interceptado por la directiva
-  moveItem(fileId: string, targetFolderId: string | null): void {
-    //* Evitamos llamadas innecesarias si se suelta en la misma carpeta actual
-    if (targetFolderId === this.driveService.currentFolderId()) return;
+  moveItem(fileId?: string, targetFolderId?: string | null): void {
+    if (!fileId) return;
+    const target = targetFolderId || null;
+    if (target === this.driveService.currentFolderId()) return;
 
     this.isProcessing.set(true);
-    this.driveService.moveFile(fileId, { targetFolderId }).subscribe({
+    this.driveService.moveFile(fileId, { targetFolderId: target }).subscribe({
       next: () => {
         this.isProcessing.set(false);
-        //* La vista se recarga automáticamente por el tap() en el DriveService
       },
-      error: (err) => {
-        console.error('Error al mover archivo', err);
+      error: () => {
         this.isProcessing.set(false);
       }
     });
@@ -84,11 +82,11 @@ export class MyDrive {
     this.driveService.loadFolderContent(null);
   }
 
-  navigateTo(folderId: string | null): void {
-    this.driveService.loadFolderContent(folderId);
+  navigateTo(folderId?: string | null): void {
+    const targetFolderId = folderId && folderId !== 'undefined' && folderId !== 'null' ? folderId : null;
+    this.driveService.loadFolderContent(targetFolderId);
   }
 
-  //* Crear carpeta
   openCreateFolderModal(): void {
     this.newFolderName.set('');
     this.isCreateFolderModalOpen.set(true);
@@ -113,15 +111,16 @@ export class MyDrive {
       });
   }
 
-  //* Renombrar 
   openRenameFileModal(file: FileItem): void {
-    this.itemToRename.set({ id: file.id, name: file.filename, type: 'file' });
+    const fileId = file.id || file._id || '';
+    this.itemToRename.set({ id: fileId, name: file.filename, type: 'file' });
     this.newName.set(file.filename);
     this.isRenameModalOpen.set(true);
   }
 
   openRenameFolderModal(folder: Folder): void {
-    this.itemToRename.set({ id: folder.id, name: folder.name, type: 'folder' });
+    const folderId = folder.id || folder._id || '';
+    this.itemToRename.set({ id: folderId, name: folder.name, type: 'folder' });
     this.newName.set(folder.name);
     this.isRenameModalOpen.set(true);
   }
@@ -246,13 +245,14 @@ export class MyDrive {
     if (!target.closest('.menu-trigger') && !target.closest('.action-menu')) this.activeMenuId.set(null);
   }
 
-  toggleMenu(event: Event, id: string): void {
+  toggleMenu(event: Event, id?: string): void {
     event.stopPropagation();
+    if (!id) return;
     this.activeMenuId.set(this.activeMenuId() === id ? null : id);
   }
 
-  //* Accione para el menu contextual de cada archivo
-  deleteFile(fileId: string): void {
+  deleteFile(fileId?: string): void {
+    if (!fileId || fileId === 'undefined' || fileId === 'null') return;
     this.isProcessing.set(true);
     this.activeMenuId.set(null);
     this.driveService.deleteFile(fileId).subscribe({
@@ -261,7 +261,8 @@ export class MyDrive {
     });
   }
 
-  deleteFolder(folderId: string): void {
+  deleteFolder(folderId?: string): void {
+    if (!folderId || folderId === 'undefined' || folderId === 'null') return;
     this.isProcessing.set(true);
     this.activeMenuId.set(null);
     this.driveService.deleteFolder(folderId).subscribe({
@@ -270,20 +271,21 @@ export class MyDrive {
     });
   }
 
-  downloadFile(fileId: string, filename: string): void {
+  downloadFile(fileId?: string, filename?: string): void {
+    if (!fileId) return;
     this.activeMenuId.set(null);
     this.driveService.downloadFile(fileId).subscribe({
       next: (blob) => {
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = filename
+        a.download = filename || 'download';
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         window.URL.revokeObjectURL(url);
       },
-      error: (err) => console.error('Error al descargar archivo', err)
-    })
+      error: () => {}
+    });
   }
 }

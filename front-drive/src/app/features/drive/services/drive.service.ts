@@ -1,6 +1,6 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { catchError, forkJoin, Observable, of, tap } from 'rxjs';
+import { catchError, forkJoin, Observable, of, tap, throwError } from 'rxjs';
 import {
   Folder,
   FileItem,
@@ -15,15 +15,15 @@ import {
   EditableFileContentResponse,
   UpdateFileContentDto,
 } from '../../../core/models/drive.model';
+import { environment } from '../../../../environments/environment';
 
 @Injectable({
   providedIn: 'root',
 })
 export class DriveService {
   private readonly http = inject(HttpClient);
-  private readonly baseUrl = 'http://localhost:3000/api';
+  private readonly baseUrl = environment.apiUrl;
 
-  //* Signals para manejar el estado de la aplicación
   readonly currentFolderId = signal<string | null>(null);
   readonly currentFolder = signal<{ id: string; name: string; parentFolderId: string | null } | null>(null);
   readonly filesStack = signal<FilesStackItem[]>([]);
@@ -34,17 +34,12 @@ export class DriveService {
   readonly sortBy = signal<string>('name');
   readonly sortOrder = signal<'asc' | 'desc'>('asc');
 
-  //* Propiedad computada para determinar si hay contenido en la carpeta actual
   readonly hasContent = computed(() => this.folders().length > 0 || this.files().length > 0);
   readonly trashedFolders = signal<Folder[]>([]);
   readonly trashedFiles = signal<FileItem[]>([]);
   readonly sharedFolders = signal<Folder[]>([]);
   readonly sharedFiles = signal<any[]>([]);
 
-  /*
-   * Carga el contenido de una carpeta
-   *  o resultados de búsqueda
-   */
   loadFolderContent(
     folderId?: string | null,
     search?: string,
@@ -54,8 +49,10 @@ export class DriveService {
     this.isLoading.set(true);
     let params = new HttpParams();
 
-    if (folderId) {
-      params = params.set('folderId', folderId);
+    const sanitizedFolderId = folderId && folderId !== 'undefined' && folderId !== 'null' ? folderId : null;
+
+    if (sanitizedFolderId) {
+      params = params.set('folderId', sanitizedFolderId);
     }
     if (search && search.trim() !== '') {
       params = params.set('search', search.trim());
@@ -68,15 +65,27 @@ export class DriveService {
       .pipe(
         tap({
           next: (response) => {
-            this.currentFolderId.set(folderId || null);
+            this.currentFolderId.set(sanitizedFolderId);
             this.currentFolder.set(response.currentFolder);
             this.filesStack.set(response.filesStack || []);
-            this.folders.set(response.subfolders || []);
-            this.files.set(response.files || []);
+
+            const mappedFolders: Folder[] = (response.subfolders || []).map((f: any) => ({
+              ...f,
+              id: f.id || f._id,
+              _id: f._id || f.id,
+            }));
+
+            const mappedFiles: FileItem[] = (response.files || []).map((file: any) => ({
+              ...file,
+              id: file.id || file._id,
+              _id: file._id || file.id,
+            }));
+
+            this.folders.set(mappedFolders);
+            this.files.set(mappedFiles);
             this.isLoading.set(false);
           },
-          error: (err) => {
-            console.error('Error al cargar contenido de la carpeta', err);
+          error: () => {
             this.isLoading.set(false);
           },
         })
@@ -102,6 +111,9 @@ export class DriveService {
   //* Envía una carpeta a la papelera
 
   deleteFolder(folderId: string): Observable<any> {
+    if (!folderId || folderId === 'undefined' || folderId === 'null' || typeof folderId !== 'string') {
+      return throwError(() => new Error('ID no válido'));
+    }
     return this.http.delete(`${this.baseUrl}/folders/${folderId}`).pipe(
       tap(() => {
         this.loadFolderContent(this.currentFolderId(), this.searchQuery(), this.sortBy(), this.sortOrder());
@@ -109,49 +121,43 @@ export class DriveService {
     );
   }
 
-
-  //* Restaura una carpeta de la papelera
-
   restoreFolder(folderId: string): Observable<any> {
+    if (!folderId || folderId === 'undefined' || folderId === 'null' || typeof folderId !== 'string') {
+      return throwError(() => new Error('ID no válido'));
+    }
     return this.http.patch(`${this.baseUrl}/folders/trash/${folderId}/restore`, {});
   }
 
-
-  //* Elimina permanentemente una carpeta de la papelera
-
   hardDeleteFolder(folderId: string): Observable<any> {
+    if (!folderId || folderId === 'undefined' || folderId === 'null' || typeof folderId !== 'string') {
+      return throwError(() => new Error('ID no válido'));
+    }
     return this.http.delete(`${this.baseUrl}/folders/trash/${folderId}/hard`);
   }
-
-
-  //* Obtiene carpetas en la papelera
 
   getTrashedFolders(): Observable<Folder[]> {
     return this.http.get<Folder[]>(`${this.baseUrl}/folders/trash`);
   }
 
-
-  //* Comparte una carpeta
-
   shareFolder(folderId: string, dto: ShareResourceDto): Observable<any> {
+    if (!folderId || folderId === 'undefined' || folderId === 'null' || typeof folderId !== 'string') {
+      return throwError(() => new Error('ID no válido'));
+    }
     return this.http.post(`${this.baseUrl}/folders/${folderId}/share`, dto);
   }
 
-
-  //* Revoca permisos de una carpeta compartida
-
   revokeShareFolder(folderId: string, targetUserId: string): Observable<any> {
+    if (!folderId || folderId === 'undefined' || folderId === 'null' || typeof folderId !== 'string') {
+      return throwError(() => new Error('ID no válido'));
+    }
     return this.http.delete(`${this.baseUrl}/folders/${folderId}/share/${targetUserId}`);
   }
-
-
-  //* Sube un archivo (soporta .txt y .md)
 
   uploadFile(file: File, folderId?: string | null): Observable<FileItem> {
     const formData = new FormData();
     formData.append('file', file);
     const targetFolder = folderId !== undefined ? folderId : this.currentFolderId();
-    if (targetFolder) {
+    if (targetFolder && targetFolder !== 'undefined' && targetFolder !== 'null') {
       formData.append('folderId', targetFolder);
     }
 
@@ -162,9 +168,10 @@ export class DriveService {
     );
   }
 
-  //* Envía un archivo a la papelera
-
   deleteFile(fileId: string): Observable<any> {
+    if (!fileId || fileId === 'undefined' || fileId === 'null' || typeof fileId !== 'string') {
+      return throwError(() => new Error('ID no válido'));
+    }
     return this.http.delete(`${this.baseUrl}/files/${fileId}`).pipe(
       tap(() => {
         this.loadFolderContent(this.currentFolderId(), this.searchQuery(), this.sortBy(), this.sortOrder());
@@ -172,21 +179,19 @@ export class DriveService {
     );
   }
 
-  //* Restaura un archivo de la papelera
-
   restoreFile(fileId: string): Observable<any> {
+    if (!fileId || fileId === 'undefined' || fileId === 'null' || typeof fileId !== 'string') {
+      return throwError(() => new Error('ID no válido'));
+    }
     return this.http.patch(`${this.baseUrl}/files/trash/${fileId}/restore`, {});
   }
 
-
-  //* Elimina permanentemente un archivo de la papelera
-
   hardDeleteFile(fileId: string): Observable<any> {
+    if (!fileId || fileId === 'undefined' || fileId === 'null' || typeof fileId !== 'string') {
+      return throwError(() => new Error('ID no válido'));
+    }
     return this.http.delete(`${this.baseUrl}/files/trash/${fileId}/hard`);
   }
-
-
-  //* Obtiene archivos en la papelera
 
   getTrashedFiles(): Observable<FileItem[]> {
     return this.http.get<FileItem[]>(`${this.baseUrl}/files/trash`);
@@ -283,8 +288,6 @@ export class DriveService {
   }
 
 
-  //* Carga el contenido de la papelera llamando a los métodos getTrashedFolders y getTrashedFiles
-
   loadTrash(): void {
     this.isLoading.set(true);
     forkJoin({
@@ -292,22 +295,38 @@ export class DriveService {
       files: this.getTrashedFiles()
     }).subscribe({
       next: (result) => {
-        this.trashedFolders.set(result.folders);
-        this.trashedFiles.set(result.files);
+        const mappedFolders: Folder[] = (result.folders || []).map((f: any) => ({
+          ...f,
+          id: f.id || f._id,
+          _id: f._id || f.id,
+        }));
+
+        const mappedFiles: FileItem[] = (result.files || []).map((file: any) => ({
+          ...file,
+          id: file.id || file._id,
+          _id: file._id || file.id,
+        }));
+
+        this.trashedFolders.set(mappedFolders);
+        this.trashedFiles.set(mappedFiles);
         this.isLoading.set(false);
       },
-      error: (err) => {
-        console.error('Error al cargar la papelera', err);
+      error: () => {
         this.isLoading.set(false);
       }
-    })
+    });
   }
 
-  //* vaciar la papelera
   emptyTrash(): Observable<any> {
-    const folderDeletions = this.trashedFolders().map(folder => this.hardDeleteFolder(folder.id).pipe(catchError(() => of(null))));
+    const folderDeletions = this.trashedFolders().map(folder => {
+      const id = folder.id || folder._id;
+      return id ? this.hardDeleteFolder(id).pipe(catchError(() => of(null))) : of(null);
+    });
 
-    const fileDeletions = this.trashedFiles().map(file => this.hardDeleteFile(file.id).pipe(catchError(() => of(null))));
+    const fileDeletions = this.trashedFiles().map(file => {
+      const id = file.id || file._id;
+      return id ? this.hardDeleteFile(id).pipe(catchError(() => of(null))) : of(null);
+    });
 
     const allDeletions = [...folderDeletions, ...fileDeletions];
 

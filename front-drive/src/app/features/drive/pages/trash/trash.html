@@ -34,7 +34,7 @@
     <div class="mb-8">
       <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">Carpetas</h3>
       <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-        @for (folder of driveService.trashedFolders(); track folder.id) {
+        @for (folder of driveService.trashedFolders(); track (folder.id || folder._id)) {
         <div
           class="group relative flex items-center justify-between p-4 bg-gray-50 border border-gray-200 rounded-xl transition-all select-none opacity-75 hover:opacity-100">
           <div class="flex items-center overflow-hidden">
@@ -44,7 +44,7 @@
             <span class="font-medium text-gray-600 truncate" [title]="folder.name">{{ folder.name }}</span>
           </div>
 
-          <button (click)="toggleMenu($event, folder.id)"
+          <button (click)="toggleMenu($event, (folder.id || folder._id))"
             class="menu-trigger p-1.5 text-gray-400 hover:text-gray-700 rounded-md">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -53,10 +53,10 @@
             </svg>
           </button>
 
-          @if (activeMenuId() === folder.id) {
+          @if (activeMenuId() === (folder.id || folder._id)) {
           <div
             class="action-menu absolute top-12 right-2 w-48 bg-white rounded-lg shadow-xl border border-gray-100 z-10 py-1">
-            <button (click)="restoreFolder(folder.id)"
+            <button (click)="restoreFolder(folder.id || folder._id)"
               class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center">
               <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -65,7 +65,7 @@
               Restaurar
             </button>
             <div class="border-t border-gray-100 my-1"></div>
-            <button (click)="deleteFolderPermanently(folder.id)"
+            <button (click)="deleteFolderPermanently(folder.id || folder._id)"
               class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center">
               <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -87,11 +87,11 @@
     <div>
       <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">Archivos</h3>
       <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-        @for (file of driveService.trashedFiles(); track file.id) {
+        @for (file of driveService.trashedFiles(); track (file.id || file._id)) {
         <div
           class="group relative flex flex-col p-4 bg-gray-50 border border-gray-200 rounded-xl transition-all opacity-75 hover:opacity-100">
 
-          <button (click)="toggleMenu($event, file.id)"
+          <button (click)="toggleMenu($event, (file.id || file._id))"
             class="menu-trigger absolute top-2 right-2 p-1.5 bg-white/90 rounded-md text-gray-500 opacity-0 group-hover:opacity-100 hover:text-gray-800 transition-all shadow-sm z-10">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -100,10 +100,10 @@
             </svg>
           </button>
 
-          @if (activeMenuId() === file.id) {
+          @if (activeMenuId() === (file.id || file._id)) {
           <div
             class="action-menu absolute top-10 right-2 w-48 bg-white rounded-lg shadow-xl border border-gray-100 z-20 py-1">
-            <button (click)="restoreFile(file.id)"
+            <button (click)="restoreFile(file.id || file._id)"
               class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center">
               <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -112,7 +112,7 @@
               Restaurar
             </button>
             <div class="border-t border-gray-100 my-1"></div>
-            <button (click)="deleteFilePermanently(file.id)"
+            <button (click)="deleteFilePermanently(file.id || file._id)"
               class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center">
               <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"

@@ -11,6 +11,6 @@ export class SharesController {
 
   @Get('shared-with-me')
   async getSharedWithMe(@Req() req: RequestWithUser) {
-    return this.sharesService.getSharedWithMe(req.user.id);
+    return this.sharesService.getSharedWithMe(req.user.sub || req.user.id);
   }
 }

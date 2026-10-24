@@ -6,6 +6,7 @@ import { ShareFolderDto } from './dto/share-folder/dto.js';
 import { RenameFolderDto } from './dto/rename-folder.dto.js';
 import { UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
+import { ParseObjectIdPipe } from '../common/pipes/parse-object-id.pipe.js';
 
 @UseGuards(JwtAuthGuard)
 @Controller('folders')
@@ -14,10 +15,10 @@ export class FoldersController {
 
   @Post()
   async createFolder(
-    @Body('name') createFolderDto: CreateFolderDto,
+    @Body() createFolderDto: CreateFolderDto,
     @Req() req: RequestWithUser,
   ) {
-    const ownerId = req.user.sub || req.user.id
+    const ownerId = req.user.sub || req.user.id;
     return this.foldersService.createFolder(createFolderDto, ownerId);
   }
 
@@ -28,29 +29,35 @@ export class FoldersController {
   }
 
   @Patch('trash/:id/restore')
-  async restoreFolder(@Param('id') id: string, @Req() req: RequestWithUser) {
+  async restoreFolder(
+    @Param('id', ParseObjectIdPipe) id: string,
+    @Req() req: RequestWithUser,
+  ) {
     const ownerId = req.user.sub || req.user.id;
     return this.foldersService.restoreFolder(id, ownerId);
   }
 
   @Delete('trash/:id/hard')
-  async hardDeleteFolder(@Param('id') id: string, @Req() req: RequestWithUser) {
+  async hardDeleteFolder(
+    @Param('id', ParseObjectIdPipe) id: string,
+    @Req() req: RequestWithUser,
+  ) {
     const ownerId = req.user.sub || req.user.id;
     return this.foldersService.hardDeleteFolder(id, ownerId);
   }
 
   @Delete(':id')
   async deleteFolder(
-    @Param('id') id: string,
+    @Param('id', ParseObjectIdPipe) id: string,
     @Req() req: RequestWithUser,
   ) {
-    const ownerId = req.user.sub || req.user.id
+    const ownerId = req.user.sub || req.user.id;
     return this.foldersService.deleteFolder(id, ownerId);
   }
 
   @Patch(':id/rename')
   async renameFolder(
-    @Param('id') id: string,
+    @Param('id', ParseObjectIdPipe) id: string,
     @Body() renameFolderDto: RenameFolderDto,
     @Req() req: RequestWithUser,
   ) {
@@ -66,27 +73,40 @@ export class FoldersController {
     @Query('sortBy') sortBy: string = 'name',
     @Query('order') order: 'asc' | 'desc' = 'asc',
   ) {
-    const ownerId = req.user.sub || req.user.id
+    const ownerId = req.user.sub || req.user.id;
     return this.foldersService.getFolderContents(
       ownerId, folderId, search, sortBy, order);
   }
 
+  @Get(':id/content')
+  async getFolderContentById(
+    @Param('id', ParseObjectIdPipe) id: string,
+    @Req() req: RequestWithUser,
+    @Query('search') search?: string,
+    @Query('sortBy') sortBy: string = 'name',
+    @Query('order') order: 'asc' | 'desc' = 'asc',
+  ) {
+    const ownerId = req.user.sub || req.user.id;
+    return this.foldersService.getFolderContents(
+      ownerId, id, search, sortBy, order);
+  }
+
   @Post(':id/share')
   async shareFolder(
-    @Param('id') id: string,
+    @Param('id', ParseObjectIdPipe) id: string,
     @Body() shareFolderDto: ShareFolderDto,
     @Req() req: RequestWithUser
   ) {
     const ownerId = req.user.sub || req.user.id;
     return this.foldersService.shareFolder(
       id, ownerId, shareFolderDto.targetUserId, shareFolderDto.permission
-    )
+    );
   }
 
   @Delete(':id/share/:userId')
   async revokeShare(
-    @Param('id') folderId: string,
-    @Param('userId') targetUserId: string,
+    @Param('id', ParseObjectIdPipe) folderId: string,
+    @Param('userId', ParseObjectIdPipe) targetUserId: string,
     @Req() req: RequestWithUser
   ) {
     const ownerId = req.user.sub || req.user.id;

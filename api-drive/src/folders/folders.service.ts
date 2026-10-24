@@ -64,10 +64,16 @@ export class FoldersService {
   ) {
     let currentFolder: Folder | null = null;
     const filesStack: FilesStack[] = [];
+    let targetFolderObjectId: Types.ObjectId | null = null;
 
-    if (folderId && Types.ObjectId.isValid(folderId)) {
+    if (folderId && folderId !== 'undefined' && folderId !== 'null') {
+      if (!Types.ObjectId.isValid(folderId)) {
+        throw new BadRequestException('ID de carpeta no válido');
+      }
+      targetFolderObjectId = new Types.ObjectId(folderId);
+
       currentFolder = await this.folderModel.findOne({
-        _id: new Types.ObjectId(folderId),
+        _id: targetFolderObjectId,
         $or: [
           { owner: new Types.ObjectId(ownerId) },
           { 'sharedWith.userId': new Types.ObjectId(ownerId) },
@@ -95,34 +101,56 @@ export class FoldersService {
     }
 
     const folderQuery: Record<string, any> = {
-      owner: new Types.ObjectId(ownerId),
+      $or: [
+        { owner: new Types.ObjectId(ownerId) },
+        { 'sharedWith.userId': new Types.ObjectId(ownerId) },
+      ],
       isTrash: false,
     };
 
     if (search && search.trim() !== '') {
       folderQuery.name = { $regex: search.trim(), $options: 'i' };
     } else {
-      folderQuery.parentFolderId = folderId ? new Types.ObjectId(folderId) : null;
+      folderQuery.parentFolderId = targetFolderObjectId ? targetFolderObjectId : { $in: [null, undefined] };
     }
 
     let folderSortField = 'name';
     if (sortBy === 'date') folderSortField = 'createdAt';
     const sortOrder = order === 'desc' ? -1 : 1;
 
-    const subfolders = await this.folderModel
+    const rawSubfolders = await this.folderModel
       .find(folderQuery)
       .sort({ [folderSortField]: sortOrder })
       .exec();
 
+    const subfolders = rawSubfolders.map(folder => ({
+      _id: (folder._id as Types.ObjectId).toString(),
+      id: (folder._id as Types.ObjectId).toString(),
+      name: folder.name,
+      owner: folder.owner.toString(),
+      parentFolderId: folder.parentFolderId ? folder.parentFolderId.toString() : null,
+      isTrash: folder.isTrash,
+      deletedAt: folder.deletedAt ? folder.deletedAt.toISOString() : null,
+      sharedWith: folder.sharedWith,
+      createdAt: (folder as any).createdAt,
+      updatedAt: (folder as any).updatedAt,
+    }));
+
     const files = await this.filesService.listFilesByFolder(
-      ownerId, folderId, search, sortBy, order);
+      ownerId,
+      targetFolderObjectId ? targetFolderObjectId.toString() : undefined,
+      search,
+      sortBy,
+      order,
+    );
 
     return {
       currentFolder: currentFolder
         ? {
           id: (currentFolder._id as Types.ObjectId).toString(),
+          _id: (currentFolder._id as Types.ObjectId).toString(),
           name: currentFolder.name,
-          parentFolderId: currentFolder.parentFolderId,
+          parentFolderId: currentFolder.parentFolderId ? currentFolder.parentFolderId.toString() : null,
         }
         : null,
       filesStack,
@@ -226,21 +254,24 @@ export class FoldersService {
     };
   }
 
-  //* Metodo que obtiene los IDs de las subcarpetas 
-  private async getAllSubfolderIds(initialFolderId: Types.ObjectId,
+  private async getAllSubfolderIds(
+    initialFolderId: Types.ObjectId,
     ownerObjectId: Types.ObjectId,
+    isTrash?: boolean,
   ): Promise<Types.ObjectId[]> {
     const folderIds: Types.ObjectId[] = [initialFolderId];
     const queue: Types.ObjectId[] = [initialFolderId];
 
     while (queue.length > 0) {
-      const currentId = queue.shift()
-      const children = await this.folderModel.find({
+      const currentId = queue.shift();
+      const filter: Record<string, any> = {
         parentFolderId: currentId,
         owner: ownerObjectId,
-        isTrash: false,
-      }, { _id: 1 }
-      ).exec();
+      };
+      if (typeof isTrash === 'boolean') {
+        filter.isTrash = isTrash;
+      }
+      const children = await this.folderModel.find(filter, { _id: 1 }).exec();
 
       for (const child of children) {
         const childId = child._id as Types.ObjectId;
@@ -251,18 +282,29 @@ export class FoldersService {
     return folderIds;
   }
 
-  //* Listar carpetas en papelera
   async getTrashedFolders(ownerId: string) {
-    return this.folderModel.find({
+    const folders = await this.folderModel.find({
       owner: new Types.ObjectId(ownerId),
       isTrash: true,
     }).exec();
+
+    return folders.map(folder => ({
+      _id: (folder._id as Types.ObjectId).toString(),
+      id: (folder._id as Types.ObjectId).toString(),
+      name: folder.name,
+      owner: folder.owner.toString(),
+      parentFolderId: folder.parentFolderId ? folder.parentFolderId.toString() : null,
+      isTrash: folder.isTrash,
+      deletedAt: folder.deletedAt ? folder.deletedAt.toISOString() : null,
+      sharedWith: folder.sharedWith,
+      createdAt: (folder as any).createdAt,
+      updatedAt: (folder as any).updatedAt,
+    }));
   }
 
-  //* Restaurar carpeta y subcarpetas
   async restoreFolder(folderId: string, ownerId: string) {
-    if (!Types.ObjectId.isValid(folderId)) {
-      throw new NotFoundException('Carpeta no encontrada en la base de datos');
+    if (!folderId || !Types.ObjectId.isValid(folderId)) {
+      throw new BadRequestException('ID de carpeta no válido');
     }
     const ownerObjectId = new Types.ObjectId(ownerId);
     const targetFolderObjectId = new Types.ObjectId(folderId);
@@ -277,28 +319,29 @@ export class FoldersService {
       throw new NotFoundException('Carpeta no encontrada o sin acceso');
     }
 
-    //* Revisar si la carpeta padre existe y no está en papelera
-    let newParentId = folder.parentFolderId;
+    let newParentId: Types.ObjectId | null = folder.parentFolderId;
     if (newParentId) {
       const parent = await this.folderModel.findOne({
         _id: newParentId,
-        isTrash: false
-      }).exec()
+        isTrash: false,
+      }).exec();
       if (!parent) {
-        newParentId = null; // Si la carpeta padre no existe o está en papelera, se establece como raíz
+        newParentId = null;
       }
     }
 
-    //* Obtener todos los hijos
-    const allFolderIds = await this.getAllSubfolderIds(targetFolderObjectId, ownerObjectId);
+    const allFolderIds = await this.getAllSubfolderIds(targetFolderObjectId, ownerObjectId, true);
 
-    //* Restaurar archivos de las carpetas
     await this.filesService.restoreFilesByFolderIds(allFolderIds, ownerId);
 
-    //* Restaurar carpetas
-    await this.folderModel.updateOne(
-      { _id: { $in: allFolderIds } },
+    await this.folderModel.updateMany(
+      { _id: { $in: allFolderIds }, owner: ownerObjectId },
       { $set: { isTrash: false, deletedAt: null } },
+    ).exec();
+
+    await this.folderModel.updateOne(
+      { _id: targetFolderObjectId },
+      { $set: { parentFolderId: newParentId, isTrash: false, deletedAt: null } },
     ).exec();
 
     await this.activityLogService.logEvent(
@@ -312,10 +355,9 @@ export class FoldersService {
     return { message: 'Carpeta y subcarpetas restauradas correctamente' };
   }
 
-  //* Eliminar carpeta de forma permanente
   async hardDeleteFolder(folderId: string, ownerId: string) {
-    if (!Types.ObjectId.isValid(folderId)) {
-      throw new NotFoundException('Carpeta no encontrada en la base de datos');
+    if (!folderId || !Types.ObjectId.isValid(folderId)) {
+      throw new BadRequestException('ID de carpeta no válido');
     }
 
     const targetFolderObjectId = new Types.ObjectId(folderId);
@@ -331,13 +373,10 @@ export class FoldersService {
       throw new NotFoundException('Carpeta no encontrada o sin acceso');
     }
 
-    //* Obtener todos los hijos
-    const allFolderIds = await this.getAllSubfolderIds(targetFolderObjectId, ownerObjectId);
+    const allFolderIds = await this.getAllSubfolderIds(targetFolderObjectId, ownerObjectId, true);
 
-    //* Hard delete fisico de archivos
     await this.filesService.hardDeleteFilesByFolderIds(allFolderIds, ownerId);
 
-    //* Hard delete fisico de carpetas
     await this.folderModel.deleteMany({
       _id: { $in: allFolderIds },
       owner: ownerObjectId,

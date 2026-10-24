@@ -7,6 +7,7 @@ import { AuthResponse } from '../models/auth-response.interface';
 import { RegisterDto } from '../models/register.dto';
 import { User } from '../models/user.interface';
 import { LoginDto } from '../models/user.model';
+import { environment } from '../../../environments/environment';
 
 
 @Injectable({
@@ -15,18 +16,28 @@ import { LoginDto } from '../models/user.model';
 export class AuthService {
   private readonly http = inject(HttpClient);
   private readonly router = inject(Router);
-  private readonly baseUrl = 'http://localhost:3000/api';
+  //private readonly baseUrl = 'http://localhost:3000/api';
+  private readonly baseUrl = environment.apiUrl;
 
   readonly currentUser = signal<User | null>(null);
   readonly isAdmin = computed(() => this.currentUser()?.role === UserRole.ADMIN);
   readonly isAuthenticated = computed(() => !!this.currentUser());
 
+  private getUserFromStorage(): User | null {
+    const userJson = localStorage.getItem('user');
+    try {
+      return userJson ? JSON.parse(userJson) : null;
+    } catch {
+      return null;
+    }
+  }
 
   login(dto: LoginDto): Observable<AuthResponse> {
     return this.http.post<AuthResponse>(`${this.baseUrl}/auth/login`, dto).pipe(
       tap((response) => {
         if (response.accessToken) {
           localStorage.setItem('access_token', response.accessToken);
+          localStorage.setItem('user', JSON.stringify(response.user));
           this.currentUser.set(response.user);
         }
       })
@@ -35,6 +46,7 @@ export class AuthService {
 
   logout(): void {
     localStorage.removeItem('access_token');
+    localStorage.removeItem('user');
     this.currentUser.set(null);
     this.router.navigate(['/auth/login']);
   }

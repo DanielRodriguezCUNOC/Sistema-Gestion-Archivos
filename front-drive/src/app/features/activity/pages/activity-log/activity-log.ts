@@ -1,6 +1,7 @@
 import { CommonModule, DatePipe } from '@angular/common';
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
+import { environment } from '../../../../../environments/environment';
 
 interface ActivityUser {
   _id?: string;
@@ -27,7 +28,8 @@ interface ActivityLogItem {
 })
 export class ActivityLog implements OnInit {
   private readonly http = inject(HttpClient);
-  private readonly baseUrl = 'http://localhost:3000/api';
+  //private readonly baseUrl = 'http://localhost:3000/api';
+  private readonly baseUrl = environment.apiUrl;
 
   readonly logs = signal<ActivityLogItem[]>([]);
   readonly isLoading = signal(false);

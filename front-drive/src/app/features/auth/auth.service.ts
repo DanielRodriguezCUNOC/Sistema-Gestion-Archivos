@@ -6,12 +6,13 @@ import { User } from '../../core/models/user.interface';
 import { RegisterDto } from '../../core/models/register.dto';
 import { Observable, tap } from 'rxjs';
 import { AuthResponse } from '../../core/models/auth-response.interface';
+import { environment } from '../../../environments/environment';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private readonly http = inject(HttpClient);
-  private readonly baseUrl = 'http://localhost:3000/api';
-
+  //private readonly baseUrl = 'http://localhost:3000/api';
+  private readonly baseUrl = environment.apiUrl;
   readonly currentUser = signal<User | null>(null);
   readonly isAdmin = computed(() => this.currentUser()?.role === UserRole.ADMIN);
 

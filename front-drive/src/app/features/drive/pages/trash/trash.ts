@@ -26,12 +26,14 @@ export class Trash implements OnInit {
     if (!target.closest('.menu-trigger') && !target.closest('.action-menu')) this.activeMenuId.set(null);
   }
 
-  toggleMenu(event: Event, id: string): void {
+  toggleMenu(event: Event, id?: string): void {
     event.stopPropagation();
+    if (!id) return;
     this.activeMenuId.set(this.activeMenuId() === id ? null : id);
   }
 
-  restoreFile(fileId: string): void {
+  restoreFile(fileId?: string): void {
+    if (!fileId || fileId === 'undefined' || fileId === 'null') return;
     this.activeMenuId.set(null);
     this.isProcessing.set(true);
     this.driveService.restoreFile(fileId).subscribe({
@@ -45,7 +47,8 @@ export class Trash implements OnInit {
     });
   }
 
-  deleteFilePermanently(fileId: string): void {
+  deleteFilePermanently(fileId?: string): void {
+    if (!fileId || fileId === 'undefined' || fileId === 'null') return;
     this.activeMenuId.set(null);
     this.isProcessing.set(true);
     this.driveService.hardDeleteFile(fileId).subscribe({
@@ -59,7 +62,8 @@ export class Trash implements OnInit {
     });
   }
 
-  restoreFolder(folderId: string): void {
+  restoreFolder(folderId?: string): void {
+    if (!folderId || folderId === 'undefined' || folderId === 'null') return;
     this.activeMenuId.set(null);
     this.isProcessing.set(true);
     this.driveService.restoreFolder(folderId).subscribe({
@@ -73,7 +77,8 @@ export class Trash implements OnInit {
     });
   }
 
-  deleteFolderPermanently(folderId: string): void {
+  deleteFolderPermanently(folderId?: string): void {
+    if (!folderId || folderId === 'undefined' || folderId === 'null') return;
     this.activeMenuId.set(null);
     this.isProcessing.set(true);
     this.driveService.hardDeleteFolder(folderId).subscribe({

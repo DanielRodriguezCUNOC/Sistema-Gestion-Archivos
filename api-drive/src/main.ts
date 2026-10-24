@@ -7,16 +7,16 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
 
-  // 1. Habilitar CORS para Angular
+  //* Habilitar CORS para Angular
   app.enableCors({
     origin: 'http://localhost:4200',
     credentials: true,
   });
 
-  // 2. Prefijo global para la API
+  //* Prefijo global para la API
   app.setGlobalPrefix('api');
 
-  // 3. Validación automática de DTOs
+  //* Validación automática de DTOs
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -27,6 +27,6 @@ async function bootstrap() {
 
   const port = configService.get<number>('PORT') || 3000;
   await app.listen(port);
-  console.log(`🚀 Servidor NestJS ejecutándose en: http://localhost:${port}/api`);
+  console.log(`Servidor NestJS ejecutándose en: http://localhost:${port}/api`);
 }
 bootstrap();

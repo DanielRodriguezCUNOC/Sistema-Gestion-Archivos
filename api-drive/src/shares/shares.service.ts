@@ -14,28 +14,32 @@ export class SharesService {
   async getSharedWithMe(userId: string) {
     const userObjectId = new Types.ObjectId(userId);
 
-    //* Buscar carpetas compartidas con el usuario que no estén en la papelera
     const foldersPromise = this.folderModel.find({
       'sharedWith.userId': userObjectId,
-      isTrash: false,
+      isTrash: { $ne: true },
     })
       .populate('owner', 'name email avatar')
       .exec();
 
-    //* Buscar archivos compartidos con el usuario
     const filesPromise = this.connection.db!
       .collection('uploads.files')
       .find({
         'metadata.sharedWith.userId': userObjectId,
-        'metadata.isTrash': false,
+        'metadata.isTrash': { $ne: true },
       })
       .toArray();
 
-    //* Ejecutar ambas promesas en paralelo
     const [folders, files] = await Promise.all([foldersPromise, filesPromise]);
 
+    const formattedFolders = folders.map((folder) => ({
+      ...folder.toObject(),
+      id: (folder._id as Types.ObjectId).toString(),
+      _id: (folder._id as Types.ObjectId).toString(),
+    }));
+
     const formattedFiles = files.map((file) => ({
-      _id: file._id,
+      _id: file._id.toString(),
+      id: file._id.toString(),
       filename: file.filename,
       length: file.length,
       uploadDate: file.uploadDate,
@@ -45,7 +49,7 @@ export class SharesService {
     }));
 
     return {
-      folders,
+      folders: formattedFolders,
       files: formattedFiles,
     };
   }
