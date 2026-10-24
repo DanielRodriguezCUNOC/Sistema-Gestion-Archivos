@@ -1,0 +1,68 @@
+<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" (click)="state.closeCreate()">
+  <form [formGroup]="form" (ngSubmit)="onSubmit()" (click)="$event.stopPropagation()"
+    class="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
+
+    <div class="flex justify-between items-center">
+      <h2 class="text-xl font-bold text-gray-800">Crear Nuevo Usuario</h2>
+      <button type="button" (click)="state.closeCreate()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+        aria-label="Cerrar">×</button>
+    </div>
+
+    @if (state.createError(); as createError) {
+    <div class="p-3 text-sm text-red-700 bg-red-100 rounded-lg border border-red-200" role="alert">
+      {{ createError }}
+    </div>
+    }
+
+    <div>
+      <label for="new-name" class="block text-sm font-medium text-gray-700">Nombre Completo</label>
+      <input id="new-name" type="text" formControlName="name" placeholder="Ej. Juan Pérez"
+        class="mt-1 block w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+        [class]="isFieldInvalid('name') ? 'border-red-500' : 'border-gray-300'" />
+      @if (isFieldInvalid('name')) {
+      <p class="mt-1 text-xs text-red-500">El nombre es obligatorio.</p>
+      }
+    </div>
+
+    <div>
+      <label for="new-email" class="block text-sm font-medium text-gray-700">Correo Electrónico</label>
+      <input id="new-email" type="email" formControlName="email" placeholder="usuario@ejemplo.com"
+        class="mt-1 block w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+        [class]="isFieldInvalid('email') ? 'border-red-500' : 'border-gray-300'" />
+      @if (isFieldInvalid('email')) {
+      <p class="mt-1 text-xs text-red-500">Ingrese un correo electrónico válido.</p>
+      }
+    </div>
+
+    <div>
+      <label for="new-password" class="block text-sm font-medium text-gray-700">Contraseña</label>
+      <input id="new-password" type="password" formControlName="password" placeholder="••••••••"
+        autocomplete="new-password"
+        class="mt-1 block w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+        [class]="isFieldInvalid('password') ? 'border-red-500' : 'border-gray-300'" />
+      @if (isFieldInvalid('password')) {
+      <p class="mt-1 text-xs text-red-500">La contraseña debe tener al menos 6 caracteres.</p>
+      }
+    </div>
+
+    <div>
+      <label for="new-role" class="block text-sm font-medium text-gray-700">Rol de Usuario</label>
+      <select id="new-role" formControlName="role"
+        class="mt-1 block w-full px-4 py-2 border border-gray-300 bg-white rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+        <option [value]="UserRole.USER">Usuario (USER)</option>
+        <option [value]="UserRole.ADMIN">Administrador (ADMIN)</option>
+      </select>
+    </div>
+
+    <div class="flex justify-end gap-3 pt-2">
+      <button type="button" (click)="state.closeCreate()" [disabled]="state.isCreating()"
+        class="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg disabled:opacity-50">
+        Cancelar
+      </button>
+      <button type="submit" [disabled]="state.isCreating() || form.invalid"
+        class="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed">
+        {{ state.isCreating() ? 'Creando...' : 'Registrar Usuario' }}
+      </button>
+    </div>
+  </form>
+</div>

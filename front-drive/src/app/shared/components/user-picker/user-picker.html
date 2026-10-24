@@ -1,0 +1,40 @@
+@if (selected(); as user) {
+<div class="flex items-center justify-between gap-3 border border-indigo-200 bg-indigo-50 rounded-lg px-3 py-2">
+  <div class="min-w-0">
+    <p class="text-sm font-semibold text-gray-800 truncate">
+      {{ user.name }}
+      @if (!user.isActive) {
+      <span class="ml-1 text-xs font-medium text-amber-700">(inactivo)</span>
+      }
+    </p>
+    <p class="text-xs text-gray-500 truncate">{{ user.email }}</p>
+  </div>
+  <button type="button" (click)="clear()" aria-label="Quitar usuario seleccionado"
+    class="text-gray-400 hover:text-gray-700 text-lg leading-none">×</button>
+</div>
+} @else {
+<div class="relative">
+  <input type="text" [placeholder]="placeholder()" [value]="query()" (input)="onInput($any($event.target).value)"
+    (focus)="open.set(true)" autocomplete="off"
+    class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500" />
+
+  @if (open() && query().trim().length >= 2) {
+  <ul
+    class="absolute z-20 mt-1 w-full max-h-64 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg divide-y divide-gray-100">
+    @for (u of results(); track u.id) {
+    <li (mousedown)="select(u)" class="px-3 py-2 cursor-pointer hover:bg-gray-50">
+      <p class="text-sm font-medium text-gray-800">
+        {{ u.name }}
+        @if (!u.isActive) {
+        <span class="ml-1 text-xs text-amber-700">(inactivo)</span>
+        }
+      </p>
+      <p class="text-xs text-gray-500">{{ u.email }}</p>
+    </li>
+    } @empty {
+    <li class="px-3 py-2 text-sm text-gray-400 italic">Sin resultados para "{{ query() }}"</li>
+    }
+  </ul>
+  }
+</div>
+}

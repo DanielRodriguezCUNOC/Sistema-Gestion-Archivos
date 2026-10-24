@@ -1,0 +1,143 @@
+<div class="h-full flex flex-col relative">
+  <!-- Cabecera -->
+  <div class="flex items-center justify-between mb-6 pb-4 border-b border-gray-200">
+    <h1 class="text-2xl font-semibold text-gray-800">Papelera</h1>
+    <button (click)="emptyTrash()"
+      [disabled]="isProcessing() || (!driveService.trashedFolders().length && !driveService.trashedFiles().length)"
+      class="px-4 py-2 bg-white border border-gray-300 text-red-600 rounded-lg shadow-sm text-sm font-medium hover:bg-red-50 disabled:opacity-50 transition-colors">
+      Vaciar papelera
+    </button>
+  </div>
+
+  <!-- Contenido Principal -->
+  @if (driveService.isLoading()) {
+  <div class="flex-1 flex items-center justify-center">
+    <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-red-600"></div>
+  </div>
+  }
+  @else if (!driveService.trashedFolders().length && !driveService.trashedFiles().length) {
+  <div class="flex-1 flex flex-col items-center justify-center text-gray-500">
+    <svg class="w-20 h-20 mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16">
+      </path>
+    </svg>
+    <p class="text-lg font-medium">La papelera está vacía</p>
+    <p class="text-sm">Los elementos eliminados aparecerán aquí.</p>
+  </div>
+  }
+  @else {
+  <div class="flex-1 overflow-y-auto pb-6">
+
+    <!-- Carpetas Eliminadas -->
+    @if (driveService.trashedFolders().length > 0) {
+    <div class="mb-8">
+      <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">Carpetas</h3>
+      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+        @for (folder of driveService.trashedFolders(); track (folder.id || folder._id)) {
+        <div
+          class="group relative flex items-center justify-between p-4 bg-gray-50 border border-gray-200 rounded-xl transition-all select-none opacity-75 hover:opacity-100">
+          <div class="flex items-center overflow-hidden">
+            <svg class="w-8 h-8 text-gray-400 mr-3 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path>
+            </svg>
+            <span class="font-medium text-gray-600 truncate" [title]="folder.name">{{ folder.name }}</span>
+          </div>
+
+          <button (click)="toggleMenu($event, (folder.id || folder._id))"
+            class="menu-trigger p-1.5 text-gray-400 hover:text-gray-700 rounded-md">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z">
+              </path>
+            </svg>
+          </button>
+
+          @if (activeMenuId() === (folder.id || folder._id)) {
+          <div
+            class="action-menu absolute top-12 right-2 w-48 bg-white rounded-lg shadow-xl border border-gray-100 z-10 py-1">
+            <button (click)="restoreFolder(folder.id || folder._id)"
+              class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center">
+              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path>
+              </svg>
+              Restaurar
+            </button>
+            <div class="border-t border-gray-100 my-1"></div>
+            <button (click)="deleteFolderPermanently(folder.id || folder._id)"
+              class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center">
+              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16">
+                </path>
+              </svg>
+              Eliminar definitivamente
+            </button>
+          </div>
+          }
+        </div>
+        }
+      </div>
+    </div>
+    }
+
+    <!-- Archivos Eliminados -->
+    @if (driveService.trashedFiles().length > 0) {
+    <div>
+      <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">Archivos</h3>
+      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+        @for (file of driveService.trashedFiles(); track (file.id || file._id)) {
+        <div
+          class="group relative flex flex-col p-4 bg-gray-50 border border-gray-200 rounded-xl transition-all opacity-75 hover:opacity-100">
+
+          <button (click)="toggleMenu($event, (file.id || file._id))"
+            class="menu-trigger absolute top-2 right-2 p-1.5 bg-white/90 rounded-md text-gray-500 opacity-0 group-hover:opacity-100 hover:text-gray-800 transition-all shadow-sm z-10">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z">
+              </path>
+            </svg>
+          </button>
+
+          @if (activeMenuId() === (file.id || file._id)) {
+          <div
+            class="action-menu absolute top-10 right-2 w-48 bg-white rounded-lg shadow-xl border border-gray-100 z-20 py-1">
+            <button (click)="restoreFile(file.id || file._id)"
+              class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center">
+              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path>
+              </svg>
+              Restaurar
+            </button>
+            <div class="border-t border-gray-100 my-1"></div>
+            <button (click)="deleteFilePermanently(file.id || file._id)"
+              class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center">
+              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16">
+                </path>
+              </svg>
+              Eliminar definitivamente
+            </button>
+          </div>
+          }
+
+          <div class="flex items-center justify-center h-20 mb-3 bg-gray-100 rounded-lg">
+            <svg class="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z">
+              </path>
+            </svg>
+          </div>
+          <span class="font-medium text-sm text-gray-600 truncate" [title]="file.filename">{{ file.filename }}</span>
+          <span class="text-xs text-gray-400 mt-1">{{ file.length | fileSize }}</span>
+        </div>
+        }
+      </div>
+    </div>
+    }
+  </div>
+  }
+</div>

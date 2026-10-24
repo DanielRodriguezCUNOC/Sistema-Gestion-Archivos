@@ -1,0 +1,582 @@
+<div class="h-full flex flex-col relative overflow-y-auto pb-8">
+
+  <div class="mb-6 pb-4 border-b border-gray-200 flex justify-between items-center">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-800">Reportes y Analíticas</h1>
+      <p class="text-sm text-gray-500 mt-1">Consulta métricas de almacenamiento, usuarios, compartición y actividad del
+        sistema.</p>
+    </div>
+  </div>
+
+  <!-- Pestañas -->
+  <div class="flex border-b border-gray-200 mb-6 gap-1 flex-wrap">
+    <button (click)="setTab('storage')" [class.border-indigo-600]="activeTab() === 'storage'"
+      [class.text-indigo-600]="activeTab() === 'storage'"
+      class="py-3 px-5 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 transition-colors whitespace-nowrap">
+      📁 Archivos y Almacenamiento
+    </button>
+    <button (click)="setTab('users')" [class.border-indigo-600]="activeTab() === 'users'"
+      [class.text-indigo-600]="activeTab() === 'users'"
+      class="py-3 px-5 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 transition-colors whitespace-nowrap">
+      👥 Usuarios
+    </button>
+    <button (click)="setTab('sharing')" [class.border-indigo-600]="activeTab() === 'sharing'"
+      [class.text-indigo-600]="activeTab() === 'sharing'"
+      class="py-3 px-5 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 transition-colors whitespace-nowrap">
+      🔗 Compartición
+    </button>
+    <button (click)="setTab('activity')" [class.border-indigo-600]="activeTab() === 'activity'"
+      [class.text-indigo-600]="activeTab() === 'activity'"
+      class="py-3 px-5 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 transition-colors whitespace-nowrap">
+      📊 Actividad
+    </button>
+  </div>
+
+  @if (isLoading()) {
+  <div class="flex justify-center items-center py-16">
+    <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
+  </div>
+  } @else {
+
+  <!-- ═══════════════════════════════════════════════════════════
+       TAB: ARCHIVOS Y ALMACENAMIENTO
+  ════════════════════════════════════════════════════════════════ -->
+  @if (activeTab() === 'storage') {
+  <div class="space-y-8">
+
+    <!-- Archivos agrupados por tipo -->
+    <section>
+      <h2 class="text-base font-semibold text-gray-700 mb-3">Cantidad de archivos por tipo</h2>
+      @if (filesByType().length === 0) {
+      <p class="text-sm text-gray-400 italic">Sin datos disponibles.</p>
+      } @else {
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        @for (item of filesByType(); track item.type) {
+        <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col justify-between">
+          <div class="flex items-center justify-between mb-3">
+            <span class="px-3 py-1 bg-indigo-50 text-indigo-700 font-bold uppercase text-xs rounded-lg">
+              .{{ item.type || 'sin extensión' }}
+            </span>
+            <span class="text-xs text-gray-500">{{ item.totalMB }} MB</span>
+          </div>
+          <p class="text-2xl font-extrabold text-gray-800">{{ item.totalFiles }} archivos</p>
+          <p class="text-xs text-gray-400 mt-1 truncate">MIMEs: {{ item.mimeTypes.join(', ') }}</p>
+        </div>
+        }
+      </div>
+      }
+    </section>
+
+    <!-- Archivos por rango de fechas -->
+    <section>
+      <h2 class="text-base font-semibold text-gray-700 mb-3">Archivos almacenados en rango de fechas</h2>
+      <div class="flex flex-wrap gap-3 items-end mb-4">
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Desde</label>
+          <input type="date" [ngModel]="startDate()" (ngModelChange)="startDate.set($event)"
+            class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500" />
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Hasta</label>
+          <input type="date" [ngModel]="endDate()" (ngModelChange)="endDate.set($event)"
+            class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500" />
+        </div>
+        <button (click)="searchFilesByDate()" [disabled]="isSearchingFiles()"
+          class="px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+          {{ isSearchingFiles() ? 'Buscando...' : 'Buscar' }}
+        </button>
+      </div>
+      @if (dateError()) {
+      <p class="text-xs text-red-600 mb-3">{{ dateError() }}</p>
+      }
+      @if (filesByDateResult()) {
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div class="px-6 py-3 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
+          <span class="text-xs text-gray-500 font-medium">{{ filesByDateResult()!.totalFilesFound }} archivos
+            encontrados</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm text-gray-600">
+            <thead class="bg-gray-50 text-xs uppercase text-gray-500 font-semibold border-b border-gray-200">
+              <tr>
+                <th class="px-5 py-3">Nombre</th>
+                <th class="px-5 py-3">Tipo</th>
+                <th class="px-5 py-3">Tamaño</th>
+                <th class="px-5 py-3">Propietario</th>
+                <th class="px-5 py-3">Fecha</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              @for (f of filesByDateResult()!.files; track f.id) {
+              <tr class="hover:bg-gray-50 transition-colors">
+                <td class="px-5 py-3 font-medium text-gray-800">{{ f.filename }}</td>
+                <td class="px-5 py-3">{{ f.contentType }}</td>
+                <td class="px-5 py-3">{{ f.sizeInBytes | fileSize }}</td>
+                <td class="px-5 py-3">{{ f.owner?.name || '—' }}</td>
+                <td class="px-5 py-3 text-gray-400 text-xs">{{ f.uploadDate | date:'dd/MM/yyyy HH:mm' }}</td>
+              </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        @if (filesByDateResult()!.files.length === 0) {
+        <p class="px-6 py-6 text-sm text-gray-400 italic text-center">No hay archivos en el rango seleccionado.</p>
+        }
+      </div>
+      }
+    </section>
+
+    <!-- Archivos con mayor cantidad de operaciones -->
+    <section>
+      <h2 class="text-base font-semibold text-gray-700 mb-3">Archivos con mayor cantidad de operaciones</h2>
+      @if (topActiveFiles().length === 0) {
+      <p class="text-sm text-gray-400 italic">Sin datos disponibles.</p>
+      } @else {
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <table class="w-full text-left text-sm text-gray-600">
+          <thead class="bg-gray-50 text-xs uppercase text-gray-500 font-semibold border-b border-gray-200">
+            <tr>
+              <th class="px-5 py-3">#</th>
+              <th class="px-5 py-3">Archivo</th>
+              <th class="px-5 py-3">Operaciones</th>
+              <th class="px-5 py-3">Última actividad</th>
+              <th class="px-5 py-3">Propietario</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            @for (f of topActiveFiles(); track f.id; let i = $index) {
+            <tr class="hover:bg-gray-50 transition-colors">
+              <td class="px-5 py-3 font-bold text-indigo-600">{{ i + 1 }}</td>
+              <td class="px-5 py-3 font-medium text-gray-800">{{ f.filename }}</td>
+              <td class="px-5 py-3">
+                <span class="px-2 py-0.5 bg-indigo-50 text-indigo-700 text-xs font-bold rounded-md">{{ f.totalOperations
+                  }}</span>
+              </td>
+              <td class="px-5 py-3 text-xs text-gray-400">{{ f.lastActivity | date:'dd/MM/yyyy HH:mm' }}</td>
+              <td class="px-5 py-3 text-gray-500">{{ f.owner?.name || '—' }}</td>
+            </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      }
+    </section>
+
+  </div>
+  }
+
+  <!-- ═══════════════════════════════════════════════════════════
+       TAB: USUARIOS
+  ════════════════════════════════════════════════════════════════ -->
+  @if (activeTab() === 'users') {
+  <div class="space-y-8">
+
+    <!-- Top 10 usuarios con mayor cantidad de archivos -->
+    <section>
+      <h2 class="text-base font-semibold text-gray-700 mb-3">Top 10 usuarios con mayor cantidad de archivos</h2>
+      @if (topUsersByFiles().length === 0) {
+      <p class="text-sm text-gray-400 italic">Sin datos disponibles.</p>
+      } @else {
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <table class="w-full text-left text-sm text-gray-600">
+          <thead class="bg-gray-50 text-xs uppercase text-gray-500 font-semibold border-b border-gray-200">
+            <tr>
+              <th class="px-6 py-4">#</th>
+              <th class="px-6 py-4">Usuario</th>
+              <th class="px-6 py-4">Archivos</th>
+              <th class="px-6 py-4">Espacio utilizado</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            @for (u of topUsersByFiles(); track u.userId; let i = $index) {
+            <tr class="hover:bg-gray-50 transition-colors">
+              <td class="px-6 py-4 font-bold text-indigo-600">{{ i + 1 }}</td>
+              <td class="px-6 py-4 flex items-center gap-3">
+                <div
+                  class="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-xs shrink-0">
+                  {{ u.name.charAt(0) }}
+                </div>
+                <div>
+                  <p class="font-semibold text-gray-800">{{ u.name }}</p>
+                  <p class="text-xs text-gray-400">{{ u.email }}</p>
+                </div>
+              </td>
+              <td class="px-6 py-4 font-medium text-gray-700">{{ u.totalFiles }}</td>
+              <td class="px-6 py-4 font-medium text-gray-700">{{ u.totalBytes | fileSize }}</td>
+            </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      }
+    </section>
+
+    <!-- Usuarios con mayor cantidad de recursos compartidos -->
+    <section>
+      <h2 class="text-base font-semibold text-gray-700 mb-3">Usuarios con mayor cantidad de recursos compartidos</h2>
+      @if (topUsersByShared().length === 0) {
+      <p class="text-sm text-gray-400 italic">Sin datos disponibles.</p>
+      } @else {
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <table class="w-full text-left text-sm text-gray-600">
+          <thead class="bg-gray-50 text-xs uppercase text-gray-500 font-semibold border-b border-gray-200">
+            <tr>
+              <th class="px-6 py-4">#</th>
+              <th class="px-6 py-4">Usuario</th>
+              <th class="px-6 py-4">Archivos compartidos</th>
+              <th class="px-6 py-4">Carpetas compartidas</th>
+              <th class="px-6 py-4">Total recursos</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            @for (u of topUsersByShared(); track u.userId; let i = $index) {
+            <tr class="hover:bg-gray-50 transition-colors">
+              <td class="px-6 py-4 font-bold text-indigo-600">{{ i + 1 }}</td>
+              <td class="px-6 py-4">
+                <p class="font-semibold text-gray-800">{{ u.name }}</p>
+                <p class="text-xs text-gray-400">{{ u.email }}</p>
+              </td>
+              <td class="px-6 py-4">{{ u.sharedFilesCount }}</td>
+              <td class="px-6 py-4">{{ u.sharedFoldersCount }}</td>
+              <td class="px-6 py-4">
+                <span class="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-md">{{
+                  u.totalResourcesShared }}</span>
+              </td>
+            </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      }
+    </section>
+
+  </div>
+  }
+
+  <!-- ═══════════════════════════════════════════════════════════
+       TAB: COMPARTICIÓN
+  ════════════════════════════════════════════════════════════════ -->
+  @if (activeTab() === 'sharing') {
+  <div class="space-y-8">
+
+    <!-- Archivos compartidos con mayor cantidad de usuarios -->
+    <section>
+      <h2 class="text-base font-semibold text-gray-700 mb-3">Archivos compartidos con mayor cantidad de usuarios</h2>
+      @if (topSharedFiles().length === 0) {
+      <p class="text-sm text-gray-400 italic">Sin datos disponibles.</p>
+      } @else {
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <table class="w-full text-left text-sm text-gray-600">
+          <thead class="bg-gray-50 text-xs uppercase text-gray-500 font-semibold border-b border-gray-200">
+            <tr>
+              <th class="px-5 py-3">#</th>
+              <th class="px-5 py-3">Archivo</th>
+              <th class="px-5 py-3">Compartido con</th>
+              <th class="px-5 py-3">Tamaño</th>
+              <th class="px-5 py-3">Propietario</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            @for (f of topSharedFiles(); track f.id; let i = $index) {
+            <tr class="hover:bg-gray-50 transition-colors">
+              <td class="px-5 py-3 font-bold text-indigo-600">{{ i + 1 }}</td>
+              <td class="px-5 py-3 font-medium text-gray-800">{{ f.filename }}</td>
+              <td class="px-5 py-3">
+                <span class="px-2 py-0.5 bg-sky-50 text-sky-700 text-xs font-bold rounded-md">{{ f.sharedWithCount }}
+                  usuarios</span>
+              </td>
+              <td class="px-5 py-3">{{ f.sizeInBytes | fileSize }}</td>
+              <td class="px-5 py-3 text-gray-500">{{ f.owner?.name || '—' }}</td>
+            </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      }
+    </section>
+
+    <!-- Recursos compartidos por usuario -->
+    <section>
+      <h2 class="text-base font-semibold text-gray-700 mb-3">Recursos compartidos por un usuario</h2>
+      <div class="flex gap-3 items-end mb-4">
+        <div class="flex-1 max-w-md">
+          <label class="block text-xs text-gray-500 mb-1">Usuario</label>
+          <app-user-picker (userSelected)="onSharedByUserChange($event)" />
+        </div>
+        <button (click)="searchSharedByUser()" [disabled]="!sharedByUser() || isSearchingShared()"
+          class="px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+          {{ isSearchingShared() ? 'Consultando...' : 'Consultar' }}
+        </button>
+      </div>
+      @if (sharedByUserResult()) {
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 space-y-3">
+        <div class="flex gap-6 text-sm">
+          <div>
+            <span class="text-gray-500">Propietario:</span>
+            <span class="font-semibold ml-1">{{ sharedByUserResult()!.owner?.name || '—' }}</span>
+            <span class="text-xs text-gray-400 ml-1">({{ sharedByUserResult()!.owner?.email }})</span>
+          </div>
+        </div>
+        <div class="flex gap-6 text-sm">
+          <div><span class="text-gray-500">Archivos:</span> <span class="font-bold text-indigo-600">{{
+              sharedByUserResult()!.summary.totalSharedFiles }}</span></div>
+          <div><span class="text-gray-500">Carpetas:</span> <span class="font-bold text-indigo-600">{{
+              sharedByUserResult()!.summary.totalSharedFolders }}</span></div>
+          <div><span class="text-gray-500">Total:</span> <span class="font-bold text-emerald-600">{{
+              sharedByUserResult()!.summary.totalSharedResources }}</span></div>
+        </div>
+        @if (sharedByUserResult()!.resources.files.length > 0) {
+        <div>
+          <p class="text-xs uppercase text-gray-500 font-semibold mb-2">Archivos compartidos</p>
+          <ul class="divide-y divide-gray-100">
+            @for (f of sharedByUserResult()!.resources.files; track f.id) {
+            <li class="py-2 flex justify-between text-sm">
+              <span class="font-medium text-gray-800">{{ f.name }}</span>
+              <span class="text-xs text-gray-400">{{ f.sharedWith?.length || 0 }} destinatarios</span>
+            </li>
+            }
+          </ul>
+        </div>
+        }
+        @if (sharedByUserResult()!.resources.folders.length > 0) {
+        <div>
+          <p class="text-xs uppercase text-gray-500 font-semibold mb-2">Carpetas compartidas</p>
+          <ul class="divide-y divide-gray-100">
+            @for (f of sharedByUserResult()!.resources.folders; track f.id) {
+            <li class="py-2 flex justify-between text-sm">
+              <span class="font-medium text-gray-800">📂 {{ f.name }}</span>
+              <span class="text-xs text-gray-400">{{ f.sharedWith?.length || 0 }} destinatarios</span>
+            </li>
+            }
+          </ul>
+        </div>
+        }
+        @if (sharedByUserResult()!.summary.totalSharedResources === 0) {
+        <p class="text-sm text-gray-400 italic">Este usuario no ha compartido recursos.</p>
+        }
+      </div>
+      }
+    </section>
+
+    <!-- Recursos recibidos por usuario -->
+    <section>
+      <h2 class="text-base font-semibold text-gray-700 mb-3">Recursos recibidos por un usuario</h2>
+      <div class="flex gap-3 items-end mb-4">
+        <div class="flex-1 max-w-md">
+          <label class="block text-xs text-gray-500 mb-1">Usuario</label>
+          <app-user-picker (userSelected)="onReceivedByUserChange($event)" />
+        </div>
+        <button (click)="searchReceivedByUser()" [disabled]="!receivedByUser() || isSearchingReceived()"
+          class="px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+          {{ isSearchingReceived() ? 'Consultando...' : 'Consultar' }}
+        </button>
+      </div>
+      @if (receivedByUserResult()) {
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 space-y-3">
+        <div class="flex gap-6 text-sm">
+          <div><span class="text-gray-500">Receptor:</span> <span class="font-semibold ml-1">{{
+              receivedByUserResult()!.receiver?.name || '—' }}</span></div>
+        </div>
+        <div class="flex gap-6 text-sm">
+          <div><span class="text-gray-500">Archivos recibidos:</span> <span class="font-bold text-indigo-600">{{
+              receivedByUserResult()!.summary.totalReceivedFiles }}</span></div>
+          <div><span class="text-gray-500">Carpetas recibidas:</span> <span class="font-bold text-indigo-600">{{
+              receivedByUserResult()!.summary.totalReceivedFolders }}</span></div>
+          <div><span class="text-gray-500">Total:</span> <span class="font-bold text-emerald-600">{{
+              receivedByUserResult()!.summary.totalReceivedResources }}</span></div>
+        </div>
+        @if (receivedByUserResult()!.resources.files.length > 0) {
+        <div>
+          <p class="text-xs uppercase text-gray-500 font-semibold mb-2">Archivos recibidos</p>
+          <ul class="divide-y divide-gray-100">
+            @for (f of receivedByUserResult()!.resources.files; track f.id) {
+            <li class="py-2 flex justify-between text-sm">
+              <span class="font-medium text-gray-800">{{ f.name }}</span>
+              <span class="text-xs text-gray-400">{{ f.permission }}</span>
+            </li>
+            }
+          </ul>
+        </div>
+        }
+        @if (receivedByUserResult()!.resources.folders.length > 0) {
+        <div>
+          <p class="text-xs uppercase text-gray-500 font-semibold mb-2">Carpetas recibidas</p>
+          <ul class="divide-y divide-gray-100">
+            @for (f of receivedByUserResult()!.resources.folders; track f.id) {
+            <li class="py-2 flex justify-between text-sm">
+              <span class="font-medium text-gray-800">📂 {{ f.name }}</span>
+              <span class="text-xs text-gray-400">{{ f.permission }}</span>
+            </li>
+            }
+          </ul>
+        </div>
+        }
+        @if (receivedByUserResult()!.summary.totalReceivedResources === 0) {
+        <p class="text-sm text-gray-400 italic">Este usuario no ha recibido recursos.</p>
+        }
+      </div>
+      }
+    </section>
+
+  </div>
+  }
+
+  <!-- ═══════════════════════════════════════════════════════════
+       TAB: ACTIVIDAD
+  ════════════════════════════════════════════════════════════════ -->
+  @if (activeTab() === 'activity') {
+  <div class="space-y-8">
+
+    <!-- Historial de actividad de usuario por rango de fechas -->
+    <section>
+      <h2 class="text-base font-semibold text-gray-700 mb-3">Historial de actividad de un usuario</h2>
+      <div class="flex flex-wrap gap-3 items-end mb-4">
+        <div class="flex-1 min-w-[240px] max-w-md">
+          <label class="block text-xs text-gray-500 mb-1">Usuario</label>
+          <app-user-picker (userSelected)="onActivityUserChange($event)" />
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Desde</label>
+          <input type="date" [ngModel]="activityStart()" (ngModelChange)="activityStart.set($event)"
+            class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500" />
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Hasta</label>
+          <input type="date" [ngModel]="activityEnd()" (ngModelChange)="activityEnd.set($event)"
+            class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500" />
+        </div>
+        <button (click)="searchUserActivity()" [disabled]="!activityUser() || isSearchingActivity()"
+          class="px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+          {{ isSearchingActivity() ? 'Buscando...' : 'Buscar' }}
+        </button>
+      </div>
+      @if (activityError()) {
+      <p class="text-xs text-red-600 mb-3">{{ activityError() }}</p>
+      }
+      @if (activityResult()) {
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div class="px-6 py-3 bg-gray-50 border-b border-gray-200">
+          <span class="text-xs text-gray-500 font-medium">{{ activityResult()!.totalActivities }} actividades
+            encontradas</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm text-gray-600">
+            <thead class="bg-gray-50 text-xs uppercase text-gray-500 font-semibold border-b border-gray-200">
+              <tr>
+                <th class="px-5 py-3">Acción</th>
+                <th class="px-5 py-3">Recurso</th>
+                <th class="px-5 py-3">Tipo</th>
+                <th class="px-5 py-3">Fecha</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              @for (a of activityResult()!.activities; track a.id) {
+              <tr class="hover:bg-gray-50 transition-colors">
+                <td class="px-5 py-3 font-medium text-gray-800">{{ formatActionName(a.action) }}</td>
+                <td class="px-5 py-3 text-gray-600">{{ a.resourceName || '—' }}</td>
+                <td class="px-5 py-3">
+                  <span class="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-md">{{ a.resourceType }}</span>
+                </td>
+                <td class="px-5 py-3 text-xs text-gray-400">{{ a.createdAt | date:'dd/MM/yyyy HH:mm' }}</td>
+              </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        @if (activityResult()!.activities.length === 0) {
+        <p class="px-6 py-6 text-sm text-gray-400 italic text-center">Sin actividad en el rango seleccionado.</p>
+        }
+      </div>
+      }
+    </section>
+
+    <!-- Operaciones agrupadas por tipo -->
+    <section>
+      <h2 class="text-base font-semibold text-gray-700 mb-3">Cantidad de operaciones agrupadas por tipo</h2>
+      @if (!operationsSummary() || operationsSummary()!.summary.length === 0) {
+      <p class="text-sm text-gray-400 italic">Sin datos disponibles.</p>
+      } @else {
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div class="px-6 py-3 bg-gray-50 border-b border-gray-200">
+          <span class="text-xs text-gray-500 font-medium">Total: {{ operationsSummary()!.totalOperations }}
+            operaciones</span>
+        </div>
+        <table class="w-full text-left text-sm text-gray-600">
+          <thead class="bg-gray-50 text-xs uppercase text-gray-500 font-semibold border-b border-gray-200">
+            <tr>
+              <th class="px-6 py-3">Tipo de operación</th>
+              <th class="px-6 py-3">Cantidad</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            @for (op of operationsSummary()!.summary; track op.action) {
+            <tr class="hover:bg-gray-50 transition-colors">
+              <td class="px-6 py-3 font-medium text-gray-800">{{ formatActionName(op.action) }}</td>
+              <td class="px-6 py-3">
+                <span class="px-2 py-0.5 bg-indigo-50 text-indigo-700 text-xs font-bold rounded-md">{{ op.count
+                  }}</span>
+              </td>
+            </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      }
+    </section>
+
+    <!-- Operaciones agrupadas por período -->
+    <section>
+      <h2 class="text-base font-semibold text-gray-700 mb-3">Operaciones realizadas por período</h2>
+      <div class="flex gap-2 mb-4">
+        <button (click)="onPeriodChange('DAILY')" [class.bg-indigo-600]="period() === 'DAILY'"
+          [class.text-orange-500]="period() === 'DAILY'" [attr.aria-pressed]="period() === 'DAILY'"
+          class="px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-300 bg-white text-gray-700 transition-colors">Diario</button>
+        <button (click)="onPeriodChange('MONTHLY')" [class.bg-indigo-700]="period() === 'MONTHLY'"
+          [class.text-orange-500]="period() === 'MONTHLY'" [attr.aria-pressed]="period() === 'MONTHLY'"
+          class="px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-300 bg-white text-gray-700 transition-colors">Mensual</button>
+        <button (click)="onPeriodChange('YEARLY')" [class.bg-indigo-600]="period() === 'YEARLY'"
+          [class.text-orange-500]="period() === 'YEARLY'" [attr.aria-pressed]="period() === 'YEARLY'"
+          class="px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-300 bg-white text-gray-700 transition-colors">Anual</button>
+      </div>
+      @if (operationsTimeline()) {
+      <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm space-y-2">
+        <p class="text-xs text-gray-400 uppercase font-semibold mb-3">Total: {{ operationsTimeline()!.totalOperations }}
+          operaciones</p>
+        @for (op of operationsTimeline()!.summary; track op.period) {
+        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+          <span class="font-mono text-sm text-gray-700">{{ op.period }}</span>
+          <span class="font-bold text-indigo-600 text-sm">{{ op.count }} operaciones</span>
+        </div>
+        }
+      </div>
+      }
+    </section>
+
+    <!-- Principales acciones del sistema -->
+    <section>
+      <h2 class="text-base font-semibold text-gray-700 mb-3">Principales acciones realizadas en el sistema</h2>
+      @if (topActions().length === 0) {
+      <p class="text-sm text-gray-400 italic">Sin datos disponibles.</p>
+      } @else {
+      <div class="space-y-3 max-w-2xl">
+        @for (act of topActions(); track act.action) {
+        <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+          <div class="flex justify-between items-center mb-2">
+            <span class="font-medium text-gray-800 text-sm">{{ formatActionName(act.action) }}</span>
+            <span class="text-xs font-bold text-indigo-600">{{ act.count }} ops ({{ act.percentage }}%)</span>
+          </div>
+          <div class="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+            <div class="bg-indigo-600 h-2 rounded-full transition-all" [style.width.%]="act.percentage"></div>
+          </div>
+        </div>
+        }
+      </div>
+      }
+    </section>
+
+  </div>
+  }
+
+  }
+
+</div>
