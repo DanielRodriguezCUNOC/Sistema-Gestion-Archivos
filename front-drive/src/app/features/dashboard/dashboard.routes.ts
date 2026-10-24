@@ -1,27 +1,22 @@
-// dashboard.routes.ts
+
 import { Routes } from '@angular/router';
 
 export const DASHBOARD_ROUTES: Routes = [
-  {
-    path: 'user',
-    loadComponent: () => import('./pages/user-metrics/user-metrics').then((m) => m.UserMetrics),
-  },
   {
     path: 'admin',
     children: [
       {
         path: '',
-        loadComponent: () => import('./pages/admin-metrics/admin-metrics').then((m) => m.AdminMetrics),
+        loadComponent: () => import('../dashboard/components/admin-dashboard/admin-dashboard').then((m) => m.AdminDashboard),
       },
       {
         path: 'reports',
         loadComponent: () => import('./pages/reports/reports').then((m) => m.Reports),
       },
+      {
+        path: 'users',
+        loadComponent: () => import('./pages/user-management/user-management').then((m) => m.UserManagement),
+      },
     ]
-  },
-  {
-    path: '',
-    redirectTo: 'user',
-    pathMatch: 'full',
-  },
+  }
 ];

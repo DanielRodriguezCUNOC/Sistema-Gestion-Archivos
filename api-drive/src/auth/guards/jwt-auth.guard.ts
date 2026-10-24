@@ -2,11 +2,15 @@ import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from
 import { JwtService } from "@nestjs/jwt";
 import { Request } from "express";
 import { RequestWithUser } from "../utils/RequestWithUser.js";
+import { UsersService } from "../../users/users.service.js";
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
 
-  constructor(private readonly jwtService: JwtService) { }
+  constructor(
+    private readonly jwtService: JwtService,
+    private readonly usersService: UsersService
+  ) { }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<RequestWithUser>();
@@ -16,15 +20,22 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException('Token de autenticación no proporcionado');
     }
 
+    let payload: any;
+
     try {
-      const payload = await this.jwtService.verifyAsync(token, {
+      payload = await this.jwtService.verifyAsync(token, {
         secret: process.env.JWT_SECRET,
       });
-
-      request['user'] = { ...payload, id: payload.sub };
     } catch (error: any) {
       throw new UnauthorizedException(`Fallo al verificar token: ${error.message}`);
     }
+
+    const isActive = await this.usersService.isUserActive(payload.sub);
+    if (!isActive) {
+      throw new UnauthorizedException('La cuenta ha sido desactivada.');
+    }
+
+    request['user'] = { ...payload, id: payload.sub };
     return true;
   }
 

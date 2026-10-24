@@ -1,7 +1,7 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
-import { Observable, tap } from 'rxjs';
+import { Observable, catchError, finalize, of, tap } from 'rxjs';
 import { UserRole } from '../enums/user-role.enu';
 import { AuthResponse } from '../models/auth-response.interface';
 import { RegisterDto } from '../models/register.dto';
@@ -16,7 +16,6 @@ import { environment } from '../../../environments/environment';
 export class AuthService {
   private readonly http = inject(HttpClient);
   private readonly router = inject(Router);
-  //private readonly baseUrl = 'http://localhost:3000/api';
   private readonly baseUrl = environment.apiUrl;
 
   readonly currentUser = signal<User | null>(null);
@@ -45,10 +44,25 @@ export class AuthService {
   }
 
   logout(): void {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('user');
-    this.currentUser.set(null);
-    this.router.navigate(['/auth/login']);
+    const clearSession = () => {
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('user');
+      this.currentUser.set(null);
+      this.router.navigate(['/auth/login']);
+    };
+
+    if (!localStorage.getItem('access_token')) {
+      clearSession();
+      return;
+    }
+
+    this.http
+      .post(`${this.baseUrl}/auth/logout`, {})
+      .pipe(
+        catchError(() => of(null)),
+        finalize(clearSession),
+      )
+      .subscribe();
   }
 
   registerPublic(dto: RegisterDto): Observable<AuthResponse> {

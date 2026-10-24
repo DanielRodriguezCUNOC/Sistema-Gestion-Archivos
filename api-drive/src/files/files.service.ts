@@ -161,7 +161,11 @@ export class FilesService implements OnModuleInit {
   }
 
   //* Obtener metadata y contenido de un archivo para descarga o visualización
-  async getFileStream(fileId: string, requesterId: string) {
+  async getFileStream(
+    fileId: string,
+    requesterId: string,
+    action: ActivityAction.VIEW_FILE | ActivityAction.DOWNLOAD_FILE,
+  ) {
     if (!Types.ObjectId.isValid(fileId)) {
       throw new NotFoundException('Archivo no encontrado en la base de datos');
     }
@@ -182,6 +186,16 @@ export class FilesService implements OnModuleInit {
     }
 
     const fileInfo = files[0];
+
+    await this.activityLogService.tryLogEvent(
+      requesterId,
+      action,
+      fileId,
+      'FILE',
+      fileInfo.filename,
+      { ownerId: fileInfo.metadata?.owner?.toString() },
+    );
+
     const downloadStream = this.gridFSBucket.openDownloadStream(_id);
 
     return { fileInfo, downloadStream };
@@ -309,15 +323,51 @@ export class FilesService implements OnModuleInit {
     );
   }
 
-  async deleteFilesByFolderIds(folderIds: Types.ObjectId[], ownerId: string): Promise<number> {
+  //* Archivos afectados por una operación en cascada (se consultan antes de modificarlos para poder registrarlos)
+  private async findFilesByFilter(filter: Record<string, any>) {
+    const files = await this.connection.db
+      ?.collection('uploads.files')
+      .find(filter)
+      .project({ _id: 1, filename: 1 })
+      .toArray();
+    return files ?? [];
+  }
 
-    const files = await this.connection.db?.collection('uploads.files').updateMany({
+  //* Una entrada de log por archivo afectado; viaFolderId indica la carpeta que originó la operación
+  private logFilesViaFolder(
+    userId: string,
+    action: ActivityAction,
+    files: { _id: any; filename?: string }[],
+    rootFolderId: string,
+    details: Record<string, any> = {},
+  ) {
+    return this.activityLogService.tryLogEvents(
+      files.map((file) => ({
+        userId,
+        action,
+        resourceId: file._id.toString(),
+        resourceType: 'FILE' as const,
+        resourceName: file.filename || file._id.toString(),
+        details: { ...details, viaFolderId: rootFolderId },
+      })),
+    );
+  }
+
+  async deleteFilesByFolderIds(folderIds: Types.ObjectId[], ownerId: string, rootFolderId: string): Promise<number> {
+    const filter = {
       'metadata.owner': new Types.ObjectId(ownerId),
       'metadata.folderId': { $in: folderIds },
       'metadata.isTrash': { $ne: true }, //* Excluir archivos en papelera
-    },
-      { $set: { 'metadata.isTrash': true, 'metadata.deleteAt': new Date() } }
-    )
+    };
+
+    const affected = await this.findFilesByFilter(filter);
+
+    const files = await this.connection.db?.collection('uploads.files').updateMany(
+      filter,
+      { $set: { 'metadata.isTrash': true, 'metadata.deleteAt': new Date() } },
+    );
+
+    await this.logFilesViaFolder(ownerId, ActivityAction.DELETE_FILE, affected, rootFolderId);
 
     return files?.modifiedCount || 0;
   }
@@ -442,7 +492,7 @@ export class FilesService implements OnModuleInit {
   }
 
   //* Eliminar archivos por carpeta
-  async hardDeleteFilesByFolderIds(folderIds: Types.ObjectId[], ownerId: string): Promise<void> {
+  async hardDeleteFilesByFolderIds(folderIds: Types.ObjectId[], ownerId: string, rootFolderId: string): Promise<void> {
     const files = await this.gridFSBucket.find({
       'metadata.owner': new Types.ObjectId(ownerId),
       'metadata.folderId': { $in: folderIds },
@@ -450,35 +500,27 @@ export class FilesService implements OnModuleInit {
 
     for (const file of files) {
       await this.gridFSBucket.delete(file._id);
-      await this.activityLogService.logEvent(
-        ownerId,
-        ActivityAction.HARD_DELETE_FILE,
-        file._id.toString(),
-        'FILE',
-        file.filename,
-      );
     }
+
+    await this.logFilesViaFolder(ownerId, ActivityAction.HARD_DELETE_FILE, files, rootFolderId);
   }
 
   //* Restaurar archivos por carpeta
-  async restoreFilesByFolderIds(folderIds: Types.ObjectId[], ownerId: string): Promise<void> {
-    await this.connection.db?.collection('uploads.files').updateMany({
+  async restoreFilesByFolderIds(folderIds: Types.ObjectId[], ownerId: string, rootFolderId: string): Promise<void> {
+    const filter = {
       'metadata.owner': new Types.ObjectId(ownerId),
       'metadata.folderId': { $in: folderIds },
       'metadata.isTrash': true, //* Solo archivos en papelera
-    },
-      { $set: { 'metadata.isTrash': false, 'metadata.deletedAt': null } }
+    };
+
+    const affected = await this.findFilesByFilter(filter);
+
+    await this.connection.db?.collection('uploads.files').updateMany(
+      filter,
+      { $set: { 'metadata.isTrash': false, 'metadata.deletedAt': null } },
     );
 
-    for (const folderId of folderIds) {
-      await this.activityLogService.logEvent(
-        ownerId,
-        ActivityAction.RESTORE_FOLDER,
-        folderId.toString(),
-        'FOLDER',
-        folderId.toString(),
-      );
-    }
+    await this.logFilesViaFolder(ownerId, ActivityAction.RESTORE_FILE, affected, rootFolderId);
   }
 
   //* Compartir archivo
@@ -562,56 +604,53 @@ export class FilesService implements OnModuleInit {
     return { message: 'Permiso revocado con éxito' };
   }
 
-  async shareFilesByFolderIds(folderIds: Types.ObjectId[], ownerId: string, targetUserId: string, permission: string) {
+  async shareFilesByFolderIds(
+    folderIds: Types.ObjectId[],
+    ownerId: string,
+    targetUserId: string,
+    permission: string,
+    rootFolderId: string,
+  ) {
     const targetUserObjectId = new Types.ObjectId(targetUserId);
+    const filter = { 'metadata.owner': new Types.ObjectId(ownerId), 'metadata.folderId': { $in: folderIds } };
+
+    const affected = await this.findFilesByFilter(filter);
 
     //* Remover permiso previo si existía
     await this.connection.db?.collection('uploads.files').updateMany(
-      { 'metadata.owner': new Types.ObjectId(ownerId), 'metadata.folderId': { $in: folderIds } },
+      filter,
       { $pull: { 'metadata.sharedWith': { userId: targetUserObjectId } } as any }
     );
 
     //* Insertar nuevo permiso
     await this.connection.db?.collection('uploads.files').updateMany(
-      { 'metadata.owner': new Types.ObjectId(ownerId), 'metadata.folderId': { $in: folderIds } },
+      filter,
       { $push: { 'metadata.sharedWith': { userId: targetUserObjectId, permission } } as any }
     );
 
-    for (const folderId of folderIds) {
-      await this.activityLogService.logEvent(
-        ownerId,
-        ActivityAction.SHARE_RESOURCE,
-        folderId.toString(),
-        'FOLDER',
-        folderId.toString(),
-        {
-          targetUserId,
-          permission,
-        },
-      );
-    }
+    await this.logFilesViaFolder(ownerId, ActivityAction.SHARE_RESOURCE, affected, rootFolderId, {
+      targetUserId,
+      permission,
+    });
   }
 
-  async revokeShareFilesByFolderIds(folderIds: Types.ObjectId[], ownerId: string, targetUserId: string) {
+  async revokeShareFilesByFolderIds(
+    folderIds: Types.ObjectId[],
+    ownerId: string,
+    targetUserId: string,
+    rootFolderId: string,
+  ) {
     const targetUserObjectId = new Types.ObjectId(targetUserId);
+    const filter = { 'metadata.owner': new Types.ObjectId(ownerId), 'metadata.folderId': { $in: folderIds } };
+
+    const affected = await this.findFilesByFilter(filter);
 
     await this.connection.db?.collection('uploads.files').updateMany(
-      { 'metadata.owner': new Types.ObjectId(ownerId), 'metadata.folderId': { $in: folderIds } },
+      filter,
       { $pull: { 'metadata.sharedWith': { userId: targetUserObjectId } } as any }
     );
 
-    for (const folderId of folderIds) {
-      await this.activityLogService.logEvent(
-        ownerId,
-        ActivityAction.REVOKE_SHARE,
-        folderId.toString(),
-        'FOLDER',
-        folderId.toString(),
-        {
-          targetUserId,
-        },
-      );
-    }
+    await this.logFilesViaFolder(ownerId, ActivityAction.REVOKE_SHARE, affected, rootFolderId, { targetUserId });
   }
 
   async updateFileContent(
@@ -757,6 +796,15 @@ export class FilesService implements OnModuleInit {
     if (!isOwner && !hasEditPermission) {
       throw new ForbiddenException('No tienes permisos de edición sobre este archivo');
     }
+
+    await this.activityLogService.tryLogEvent(
+      userId,
+      ActivityAction.VIEW_FILE,
+      fileId,
+      'FILE',
+      file.filename,
+      { mode: 'editor', ownerId: file.metadata.owner.toString() },
+    );
 
     const content = await new Promise<string>((resolve, reject) => {
       const chunks: Buffer[] = [];

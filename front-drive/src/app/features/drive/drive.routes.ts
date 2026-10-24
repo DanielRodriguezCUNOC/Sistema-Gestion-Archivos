@@ -21,9 +21,4 @@ export const DRIVE_ROUTES: Routes = [
     loadComponent: () =>
       import('../../features/activity/pages/activity-log/activity-log.js').then((m) => m.ActivityLog),
   },
-  {
-    path: '',
-    redirectTo: 'my-drive',
-    pathMatch: 'full',
-  },
 ];

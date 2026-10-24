@@ -28,27 +28,12 @@ export class AdminDashboard implements OnInit {
       color: 'indigo'
     },
     {
-      title: 'Auditoría Global',
-      description: 'Consulta el historial completo de eventos y logs de actividad de todos los usuarios.',
-      icon: 'clipboard-list',
-      route: '/dashboard/admin/audit',
-      color: 'emerald'
-    },
-    {
       title: 'Gestión de Usuarios',
       description: 'Administra roles, límites de almacenamiento y estado de las cuentas del sistema.',
       icon: 'users',
       route: '/dashboard/admin/users',
       color: 'sky'
     },
-    {
-      title: 'Mantenimiento del Sistema',
-      description: 'Supervisión de chunks huérfanos en GridFS, purga de papelera global y salud de la BD.',
-      icon: 'cog',
-      route: '/dashboard/admin/system',
-      badge: 'Avanzado',
-      color: 'amber'
-    }
   ];
 
   ngOnInit(): void {

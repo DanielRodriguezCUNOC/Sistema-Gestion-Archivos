@@ -6,12 +6,17 @@ import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { User, UserSchema } from '../users/schemas/user.schema.js';
 import { UsersModule } from '../users/users.module.js';
+import { ActivityLog, ActivityLogSchema } from '../activity-log/schemas/activity-log.schema.js';
+import { ActivityLogService } from '../activity-log/activity-log.service.js';
 
 @Module({
   imports: [
     ConfigModule,
     UsersModule,
-    MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
+    MongooseModule.forFeature([
+      { name: User.name, schema: UserSchema },
+      { name: ActivityLog.name, schema: ActivityLogSchema },
+    ]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -24,7 +29,7 @@ import { UsersModule } from '../users/users.module.js';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService],
+  providers: [AuthService, ActivityLogService],
   exports: [JwtModule],
 })
 export class AuthModule { }

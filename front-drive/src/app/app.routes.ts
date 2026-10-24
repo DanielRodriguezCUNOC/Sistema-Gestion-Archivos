@@ -5,6 +5,12 @@ import { adminGuard } from './features/auth/admin.guard.js';
 
 export const routes: Routes = [
 
+  {
+    path: '',
+    loadComponent: () => import('./features/landing/landing.js').then(m => m.Landing),
+    pathMatch: 'full'
+  },
+
   //* Rutas publicas
   {
     path: 'auth',
@@ -35,8 +41,7 @@ export const routes: Routes = [
         path: 'dashboard',
         canActivate: [adminGuard],
         loadChildren: () => import('./features/dashboard/dashboard.routes').then(m => m.DASHBOARD_ROUTES)
-      },
-      { path: '', redirectTo: 'drive/my-drive', pathMatch: 'full' }
+      }
     ]
   },
 

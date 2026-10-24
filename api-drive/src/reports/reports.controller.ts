@@ -29,7 +29,7 @@ export class ReportsController {
     const currentUserId = req.user.sub || req.user.id;
 
     const userIdToReport =
-      currentUserRole === 'ADMIN' ? targetUserId : currentUserId;
+      currentUserRole === 'admin' ? targetUserId : currentUserId;
 
     return this.reportsService.getFilesGroupedByType(userIdToReport);
   }
@@ -43,7 +43,7 @@ export class ReportsController {
     const currentUserId = req.user.sub || req.user.id;
 
     const userIdToReport =
-      currentUserRole === 'ADMIN' ? dto.userId : currentUserId;
+      currentUserRole === 'admin' ? dto.userId : currentUserId;
 
     return this.reportsService.getFilesByDateRange(
       dto.startDate,
@@ -61,7 +61,7 @@ export class ReportsController {
     const currentUserId = req.user.sub || req.user.id;
 
     const userIdToReport =
-      currentUserRole === 'ADMIN' ? dto.userId : currentUserId;
+      currentUserRole === 'admin' ? dto.userId : currentUserId;
 
     return this.reportsService.getTopActiveFiles(dto.limit, userIdToReport);
   }
@@ -71,7 +71,7 @@ export class ReportsController {
     @Req() req: RequestWithUser,
     @Query() dto: TopUsersFilesDto,
   ) {
-    if (req.user.role !== 'ADMIN') {
+    if (req.user.role !== 'admin') {
       throw new ForbiddenException('No tienes permiso para acceder a este recurso');
     }
 
@@ -83,7 +83,7 @@ export class ReportsController {
     @Req() req: RequestWithUser,
     @Query() dto: TopSharedUsersDto,
   ) {
-    if (req.user.role !== 'ADMIN') {
+    if (req.user.role !== 'admin') {
       throw new ForbiddenException('No tienes permiso para acceder a este recurso');
     }
 
@@ -99,7 +99,7 @@ export class ReportsController {
     const currentUserId = req.user.sub || req.user.id;
 
     const userIdToReport =
-      currentUserRole === 'ADMIN' ? dto.userId : currentUserId;
+      currentUserRole === 'admin' ? dto.userId : currentUserId;
 
     return this.reportsService.getTopSharedFiles(dto.limit, userIdToReport);
   }
@@ -112,7 +112,7 @@ export class ReportsController {
     const currentUserRole = req.user.role;
     const currentUserId = req.user.sub || req.user.id;
 
-    if (currentUserRole !== 'ADMIN' && dto.userId !== currentUserId) {
+    if (currentUserRole !== 'admin' && dto.userId !== currentUserId) {
       throw new ForbiddenException(
         'No tienes permisos para ver los recursos compartidos por otros usuarios',
       );
@@ -129,7 +129,7 @@ export class ReportsController {
     const currentUserRole = req.user.role;
     const currentUserId = req.user.sub || req.user.id;
 
-    if (currentUserRole !== 'ADMIN' && dto.userId !== currentUserId) {
+    if (currentUserRole !== 'admin' && dto.userId !== currentUserId) {
       throw new ForbiddenException(
         'No tienes permisos para ver el historial de actividad de otros usuarios',
       );
@@ -150,7 +150,7 @@ export class ReportsController {
     const currentUserRole = req.user.role;
     const currentUserId = req.user.sub || req.user.id;
 
-    if (currentUserRole !== 'ADMIN' && dto.userId !== currentUserId) {
+    if (currentUserRole !== 'admin' && dto.userId !== currentUserId) {
       throw new ForbiddenException(
         'No tienes permisos para ver los recursos recibidos por otros usuarios',
       );
@@ -164,9 +164,7 @@ export class ReportsController {
     @Req() req: RequestWithUser,
     @Query() dto: OperationsSummaryDto,
   ) {
-    const currentUserRole = req.user.role;
-
-    if (currentUserRole !== 'ADMIN') {
+    if (req.user.role !== 'admin') {
       throw new ForbiddenException(
         'Solo los administradores pueden consultar el resumen global de operaciones',
       );
@@ -180,9 +178,7 @@ export class ReportsController {
     @Req() req: RequestWithUser,
     @Query() dto: OperationsByPeriodDto,
   ) {
-    const currentUserRole = req.user.role;
-
-    if (currentUserRole !== 'ADMIN') {
+    if (req.user.role !== 'admin') {
       throw new ForbiddenException(
         'Solo los administradores pueden consultar las métricas de operaciones por período',
       );
@@ -200,9 +196,7 @@ export class ReportsController {
     @Req() req: RequestWithUser,
     @Query() dto: TopActionsDto,
   ) {
-    const currentUserRole = req.user.role;
-
-    if (currentUserRole !== 'ADMIN') {
+    if (req.user.role !== 'admin') {
       throw new ForbiddenException(
         'Solo los administradores pueden consultar el ranking de las principales acciones',
       );

@@ -10,11 +10,5 @@ import { CommonModule } from '@angular/common';
 })
 export class Header {
 
-  private readonly authService = inject(AuthService);
-
-  readonly currentUser = this.authService.currentUser;
-
-  logout(): void {
-    this.authService.logout();
-  }
+  authService = inject(AuthService);
 }

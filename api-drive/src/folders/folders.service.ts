@@ -182,7 +182,7 @@ export class FoldersService {
     const allFolderIds = await this.getAllSubfolderIds(targetFolderObjectId, ownerObjectId);
 
     //* Eliminar archivos asociados a estas carpetas
-    const deletedFilesCount = await this.filesService.deleteFilesByFolderIds(allFolderIds, ownerId);
+    const deletedFilesCount = await this.filesService.deleteFilesByFolderIds(allFolderIds, ownerId, folderId);
 
     //* Eliminar las carpetas encontradas 
     const folderDeleteResult = await this.folderModel.updateMany({
@@ -191,6 +191,8 @@ export class FoldersService {
     },
       { $set: { isTrash: true, deletedAt: new Date() } }
     ).exec();
+
+    await this.logSubfolders(ownerId, ActivityAction.DELETE_FOLDER, folderId, allFolderIds);
 
     await this.activityLogService.logEvent(
       ownerId,
@@ -252,6 +254,31 @@ export class FoldersService {
       name: trimmedName,
       message: 'Carpeta renombrada correctamente',
     };
+  }
+
+  //* Una entrada de log por cada subcarpeta afectada por una operación en cascada
+  private async logSubfolders(
+    ownerId: string,
+    action: ActivityAction,
+    rootFolderId: string,
+    allFolderIds: Types.ObjectId[],
+    details: Record<string, any> = {},
+  ) {
+    const subfolderIds = allFolderIds.filter((id) => id.toString() !== rootFolderId);
+    if (subfolderIds.length === 0) return;
+
+    const subfolders = await this.folderModel.find({ _id: { $in: subfolderIds } }).select('name').lean().exec();
+
+    await this.activityLogService.tryLogEvents(
+      subfolders.map((folder) => ({
+        userId: ownerId,
+        action,
+        resourceId: folder._id.toString(),
+        resourceType: 'FOLDER' as const,
+        resourceName: folder.name,
+        details: { ...details, viaFolderId: rootFolderId },
+      })),
+    );
   }
 
   private async getAllSubfolderIds(
@@ -332,7 +359,7 @@ export class FoldersService {
 
     const allFolderIds = await this.getAllSubfolderIds(targetFolderObjectId, ownerObjectId, true);
 
-    await this.filesService.restoreFilesByFolderIds(allFolderIds, ownerId);
+    await this.filesService.restoreFilesByFolderIds(allFolderIds, ownerId, folderId);
 
     await this.folderModel.updateMany(
       { _id: { $in: allFolderIds }, owner: ownerObjectId },
@@ -343,6 +370,8 @@ export class FoldersService {
       { _id: targetFolderObjectId },
       { $set: { parentFolderId: newParentId, isTrash: false, deletedAt: null } },
     ).exec();
+
+    await this.logSubfolders(ownerId, ActivityAction.RESTORE_FOLDER, folderId, allFolderIds);
 
     await this.activityLogService.logEvent(
       ownerId,
@@ -375,7 +404,10 @@ export class FoldersService {
 
     const allFolderIds = await this.getAllSubfolderIds(targetFolderObjectId, ownerObjectId, true);
 
-    await this.filesService.hardDeleteFilesByFolderIds(allFolderIds, ownerId);
+    await this.filesService.hardDeleteFilesByFolderIds(allFolderIds, ownerId, folderId);
+
+    //* Debe ir antes del deleteMany: después ya no se puede leer el nombre de las subcarpetas
+    await this.logSubfolders(ownerId, ActivityAction.HARD_DELETE_FOLDER, folderId, allFolderIds);
 
     await this.folderModel.deleteMany({
       _id: { $in: allFolderIds },
@@ -432,7 +464,8 @@ export class FoldersService {
     ).exec();
 
     //* Actualizar permisos en todos los archivos contenidos en esas carpetas
-    await this.filesService.shareFilesByFolderIds(allFolderIds, ownerId, targetUserId, permission);
+    await this.filesService.shareFilesByFolderIds(allFolderIds, ownerId, targetUserId, permission, folderId);
+    await this.logSubfolders(ownerId, ActivityAction.SHARE_RESOURCE, folderId, allFolderIds, { targetUserId, permission });
 
     await this.activityLogService.logEvent(
       ownerId,
@@ -463,7 +496,8 @@ export class FoldersService {
     ).exec();
 
     // Revocar en archivos
-    await this.filesService.revokeShareFilesByFolderIds(allFolderIds, ownerId, targetUserId);
+    await this.filesService.revokeShareFilesByFolderIds(allFolderIds, ownerId, targetUserId, folderId);
+    await this.logSubfolders(ownerId, ActivityAction.REVOKE_SHARE, folderId, allFolderIds, { targetUserId });
 
     const folder = await this.folderModel.findById(folderObjectId).exec();
 

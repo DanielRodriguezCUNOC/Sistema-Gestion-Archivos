@@ -26,6 +26,7 @@ import { ShareFileDto } from './dto/share-file.dto.js';
 import { UpdateFileContentDto } from './dto/update-file-content.dto.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { ParseObjectIdPipe } from '../common/pipes/parse-object-id.pipe.js';
+import { ActivityAction } from '../activity-log/utils/activity-action.enum.js';
 
 @UseGuards(JwtAuthGuard)
 @Controller('files')
@@ -102,7 +103,7 @@ export class FilesController {
     @Res() res: Response,
   ) {
     const ownerId = req.user.sub || req.user.id
-    const { fileInfo, downloadStream } = await this.filesService.getFileStream(id, ownerId);
+    const { fileInfo, downloadStream } = await this.filesService.getFileStream(id, ownerId, ActivityAction.VIEW_FILE);
     const encodedFilename = encodeURIComponent(fileInfo.filename);
 
     res.set({
@@ -121,7 +122,7 @@ export class FilesController {
     @Res() res: Response,
   ) {
     const ownerId = req.user.sub || req.user.id;
-    const { fileInfo, downloadStream } = await this.filesService.getFileStream(id, ownerId);
+    const { fileInfo, downloadStream } = await this.filesService.getFileStream(id, ownerId, ActivityAction.DOWNLOAD_FILE);
 
     const encodedFilename = encodeURIComponent(fileInfo.filename);
 

@@ -11,7 +11,5 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
 })
 export class Sidebar {
 
-  private readonly authService = inject(AuthService);
-
-  readonly isAdmin = this.authService.isAdmin;
+  authService = inject(AuthService);
 }

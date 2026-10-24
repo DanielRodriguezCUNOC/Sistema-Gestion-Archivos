@@ -1,11 +1,22 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { ActivityLog } from './schemas/activity-log.schema.js';
 import { ActivityAction } from './utils/activity-action.enum.js';
 
+export interface ActivityEntry {
+  userId: string;
+  action: ActivityAction;
+  resourceId: string;
+  resourceType: ActivityResourceType;
+  resourceName: string;
+  details?: Record<string, any>;
+}
+
 @Injectable()
 export class ActivityLogService {
+  private readonly logger = new Logger(ActivityLogService.name);
+
   constructor(
     @InjectModel(ActivityLog.name)
     private readonly activityModel: Model<ActivityLog>,
@@ -16,7 +27,7 @@ export class ActivityLogService {
     userId: string,
     action: ActivityAction,
     resourceId: string,
-    resourceType: 'FILE' | 'FOLDER',
+    resourceType: ActivityResourceType,
     resourceName: string,
     details: Record<string, any> = {},
   ) {
@@ -29,6 +40,41 @@ export class ActivityLogService {
       details,
     });
     return log.save();
+  }
+
+  async tryLogEvent(
+    userId: string,
+    action: ActivityAction,
+    resourceId: string,
+    resourceType: ActivityResourceType,
+    resourceName: string,
+    details: Record<string, any> = {},
+  ): Promise<void> {
+    try {
+      await this.logEvent(userId, action, resourceId, resourceType, resourceName, details);
+    } catch (error: any) {
+      this.logger.error(`No se pudo registrar ${action} sobre ${resourceId}: ${error.message}`);
+    }
+  }
+
+  //* Registro masivo (cascadas de carpetas): un solo insertMany en lugar de N escrituras
+  async tryLogEvents(entries: ActivityEntry[]): Promise<void> {
+    if (entries.length === 0) return;
+
+    try {
+      await this.activityModel.insertMany(
+        entries.map((e) => ({
+          userId: new Types.ObjectId(e.userId),
+          action: e.action,
+          resourceId: new Types.ObjectId(e.resourceId),
+          resourceType: e.resourceType,
+          resourceName: e.resourceName,
+          details: e.details ?? {},
+        })),
+      );
+    } catch (error: any) {
+      this.logger.error(`No se pudieron registrar ${entries.length} eventos: ${error.message}`);
+    }
   }
 
   //* Consultar historial global o filtrado por usuario/recurso
